@@ -92,6 +92,9 @@ void Navigation::Run() {
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
   // Milestone 3 will complete the rest of navigation.
+  AckermannCurvatureDriveMsg drive_msg;
+  drive_msg.velocity = 1.0;
+  drive_pub_.publish(drive_msg);
 }
 
 }  // namespace navigation

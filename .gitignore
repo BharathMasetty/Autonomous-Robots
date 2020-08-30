@@ -3,3 +3,6 @@ build
 bin
 lib
 data
+.idea/
+cmake-build-debug
+
