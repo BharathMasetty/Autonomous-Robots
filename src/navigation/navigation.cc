@@ -19,6 +19,7 @@
 */
 //========================================================================
 
+#include <algorithm>
 #include "gflags/gflags.h"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Geometry"
@@ -61,7 +62,9 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
     robot_omega_(0),
     nav_complete_(true),
     nav_goal_loc_(0, 0),
-    nav_goal_angle_(0) {
+    nav_goal_angle_(0),
+    current_velocity_(0),
+    distance_remaining_(kDesiredDistance) {
   drive_pub_ = n->advertise<AckermannCurvatureDriveMsg>(
       "ackermann_curvature_drive", 1);
   viz_pub_ = n->advertise<VisualizationMsg>("visualization", 1);
@@ -88,12 +91,34 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
                                    double time) {
 }
 
+
+double Navigation::computeDecelDistance(const double &velocity_to_decelerate_from) {
+    return std::pow(velocity_to_decelerate_from, 2) / std::abs(kMaxDecel);
+}
+
 void Navigation::Run() {
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
   // Milestone 3 will complete the rest of navigation.
+
+  if (computeDecelDistance(current_velocity_) >= distance_remaining_) {
+      // Decelerate
+      current_velocity_ = std::max(0.0, kLoopExecutionDelay * kMaxDecel + current_velocity_);
+  } else {
+      if (current_velocity_ < kMaxVel) {
+          // Accelerate
+          current_velocity_ = std::min(kMaxVel, kMaxAccel * kLoopExecutionDelay + current_velocity_);
+      }
+      // If not accelerating, we'll keep the same velocity as before
+  }
+
+  distance_remaining_ -= current_velocity_ * kLoopExecutionDelay;
+
+  ROS_INFO_STREAM("New commanded velocity: " << current_velocity_);
+  ROS_INFO_STREAM("Distance remaining for next loop: " << distance_remaining_);
+
   AckermannCurvatureDriveMsg drive_msg;
-  drive_msg.velocity = 1.0;
+  drive_msg.velocity = current_velocity_;
   drive_pub_.publish(drive_msg);
 }
 

@@ -67,6 +67,31 @@ class Navigation {
 
  private:
 
+  /**
+   * Max acceleration of the car.
+   */
+  const double kMaxAccel = 4.0;
+
+  /**
+   * Max deceleration of the car.
+   */
+  const double kMaxDecel = -4.0;
+
+  /**
+   * Max velocity of the car.
+   */
+  const double kMaxVel = 1.0;
+
+  /**
+   * Amount of time between each loop execution.
+   */
+  const double kLoopExecutionDelay = (1.0 / 20.0);
+
+  /**
+   * Total distance that we want the car to go.
+   */
+  const double kDesiredDistance = 2.0;
+
   // Current robot location.
   Eigen::Vector2f robot_loc_;
   // Current robot orientation.
@@ -86,6 +111,26 @@ class Navigation {
   Eigen::Vector2f nav_goal_loc_;
   // Navigation goal angle.
   float nav_goal_angle_;
+
+  /**
+   * Most recent commanded velocity.
+   */
+  double current_velocity_;
+
+  /**
+   * Distance remaining (at the beginning of the next loop iteration).
+   */
+  double distance_remaining_;
+
+  /**
+   * Compute the distance it will take to decelerate to 0 from the current velocity.
+   *
+   * @param velocity_to_decelerate_from Velocity to decelerate from.
+   *
+   * @return Distance it will take to reach zero velocity when decelerating at the max deceleration rate.
+   */
+  double computeDecelDistance(const double &velocity_to_decelerate_from);
+
 };
 
 }  // namespace navigation
