@@ -97,9 +97,15 @@ double Navigation::computeDecelDistance(const double &velocity_to_decelerate_fro
 }
 
 void Navigation::Run() {
+
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
   // Milestone 3 will complete the rest of navigation.
+
+  if (drive_pub_.getNumSubscribers() == 0) {
+    ROS_ERROR("Still no subscribers to Drive message. Not yet sending velocities.");
+    return;
+  }
 
   if (computeDecelDistance(current_velocity_) >= distance_remaining_) {
       // Decelerate
