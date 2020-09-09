@@ -19,6 +19,7 @@
 */
 //========================================================================
 
+#include <algorithm>
 #include "gflags/gflags.h"
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Geometry"
@@ -88,10 +89,89 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
                                    double time) {
 }
 
+double Navigation::computeDecelDistance(const double &velocity_to_decelerate_from) {
+    return std::pow(velocity_to_decelerate_from, 2) / std::abs(kMaxDecel);
+}
+
+std::vector<double> Navigation::getCurvaturesToEvaluate() {
+
+    // TODO: Amanda, implement this
+    return {};
+}
+
+std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
+        std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map) {
+
+    // TODO: Amanda, implement this
+    double best_curvature = 0;
+    double distance_for_curvature = 0;
+
+    return std::make_pair(best_curvature, distance_for_curvature);
+}
+
+std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
+        const std::vector<double> &curvatures_to_evaluate) {
+    // TODO: Bharath, feel free to replace this implementation if you can get the results more efficiently as a batch
+    //  process. If you do, remove getFreePathLengthAndClearance.
+
+    std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature;
+    for (const double &curvature : curvatures_to_evaluate) {
+        free_path_len_and_clearance_by_curvature[curvature] = getFreePathLengthAndClearance(curvature);
+    }
+    return free_path_len_and_clearance_by_curvature;
+}
+
+std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double &curvature) {
+
+    // TODO: Bharath, implement this or replace the implementation in getFreePathLengthsAndClearances and do it in
+    //  batch.
+
+    double free_path_len = 0;
+    double clearance = 0;
+
+    return std::make_pair(free_path_len, clearance);
+}
+
+void Navigation::executeTimeOptimalControl(const double &distance, const double &curvature) {
+    // TODO: Kunal implement this.
+
+    // This will probably have to be a bit different since we need to add latency compensation, but I've copied and
+    // commented out the code from assignment 0 for reference.
+    // if (computeDecelDistance(current_velocity_) >= distance) {
+    //   // Decelerate
+    //   current_velocity_ = std::max(0.0, kLoopExecutionDelay * kMaxDecel + current_velocity_);
+    // } else {
+    //   if (current_velocity_ < kMaxVel) {
+    //     // Accelerate
+    //     current_velocity_ = std::min(kMaxVel, kMaxAccel * kLoopExecutionDelay + current_velocity_);
+    //   }
+    //   // If not accelerating, we'll keep the same velocity as before
+    // }
+
+    // AckermannCurvatureDriveMsg drive_msg;
+    // drive_msg.velocity = current_velocity_;
+    // drive_pub_.publish(drive_msg);
+}
+
 void Navigation::Run() {
+
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
   // Milestone 3 will complete the rest of navigation.
+
+  if (drive_pub_.getNumSubscribers() == 0) {
+    ROS_ERROR("Still no subscribers to Drive message. Not yet sending velocities.");
+    return;
+  }
+
+  std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
+  std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
+          getFreePathLengthsAndClearances(curvatures_to_evaluate);
+
+  // TODO: (Amanda) may need to supply some notion of goal to this function.
+  std::pair<double, double> curvature_and_dist_to_execute =
+          chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
+  executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
 }
 
 }  // namespace navigation

@@ -20,6 +20,7 @@
 //========================================================================
 
 #include <vector>
+#include <unordered_map>
 
 #include "eigen3/Eigen/Dense"
 
@@ -67,6 +68,26 @@ class Navigation {
 
  private:
 
+  /**
+   * Max acceleration of the car.
+   */
+  const double kMaxAccel = 4.0;
+
+  /**
+   * Max deceleration of the car.
+   */
+  const double kMaxDecel = -4.0;
+
+  /**
+   * Max velocity of the car.
+   */
+  const double kMaxVel = 1.0;
+
+  /**
+   * Amount of time between each loop execution.
+   */
+  const double kLoopExecutionDelay = (1.0 / 20.0);
+
   // Current robot location.
   Eigen::Vector2f robot_loc_;
   // Current robot orientation.
@@ -86,6 +107,79 @@ class Navigation {
   Eigen::Vector2f nav_goal_loc_;
   // Navigation goal angle.
   float nav_goal_angle_;
+
+  /**
+   * Compute the distance it will take to decelerate to 0 from the current velocity.
+   *
+   * @param velocity_to_decelerate_from Velocity to decelerate from.
+   *
+   * @return Distance it will take to reach zero velocity when decelerating at the max deceleration rate.
+   */
+  double computeDecelDistance(const double &velocity_to_decelerate_from);
+
+  /**
+   * Get the curvatures to evaluate and chose from.
+   *
+   * @return Curvatures to evaluate and consider for execution for the next time step.
+   */
+  std::vector<double> getCurvaturesToEvaluate();
+
+  /**
+   * Get the curvature to follow for the next timestep.
+   *
+   * TODO: Amanda, implement this.
+   * TODO: May also need to add some idea of goal as a parameter.
+   *
+   * @param curvature_and_obstacle_limitations_map  Map of curvature to a pair of the free path length and clearance for
+   *                                                the curvature.
+   *
+   * @return Pair of curvature to follow and distance for which to follow it.
+   */
+  std::pair<double, double> chooseCurvatureForNextTimestep(
+          std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map);
+
+  /**
+   * Get the free path length and clearance (distance to the closest obstacle) for each of the given curvatures.
+   *
+   * TODO: Bharath, feel free to replace this with an implementation that computes the free path lengths and clearances
+   * in batch if you can reuse computations. Delete the single-curvature function if you end up doing multiple at once.
+   * As long as this function's signature is consistent, that's fine.
+   *
+   * @param curvatures_to_evaluate Curvatures (inverse of radius of turning) to evaluate.
+   *
+   * @return Map with the curvature values as keys and pairs of the free path length and clearance (in that order) for
+   * the respective curvature as values.
+   */
+  std::unordered_map<double, std::pair<double, double>> getFreePathLengthsAndClearances(
+          const std::vector<double> &curvatures_to_evaluate);
+
+  /**
+   * Get the free path length and clearance (distance to the closest obstacle) for the given
+   * curvature.
+   *
+   * TODO: Bharath, implement this (or the batch version if you can reuse computations).
+   *
+   * @param curvature Curvature (inv of radius of turning) to find the free path length and clearance for.
+   *
+   * @return Pair with the first entry as the free path length and second entry as the clearance.
+   */
+  std::pair<double, double> getFreePathLengthAndClearance(const double &curvature);
+
+  /**
+   * Command the drive to traverse the given distance along this curvature. Should only issue one command (we may
+   * issue a different curvature at the next time step).
+   *
+   * TODO: Kunal, implement this. If there is some way that this would fail, feel free to add a boolean or int return
+   * code to indicate failure.
+   *
+   * TODO: Should this be open-loop (we just estimate how far we've gone) or semi-closed loop (use odom readings to
+   * estimate how far we've driven).
+   *
+   * @param distance    Distance to travel. This is mainly provided so that we know if we have to start decelerating
+   *                    or not.
+   * @param curvature   Curvature (inv radius of turning) to execute.
+   */
+  void executeTimeOptimalControl(const double &distance, const double &curvature);
 };
 
 }  // namespace navigation
