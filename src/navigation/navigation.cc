@@ -154,6 +154,7 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
 }
 
 void Navigation::Run() {
+  visualization::ClearVisualizationMsg(local_viz_msg_);
 
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
@@ -172,6 +173,13 @@ void Navigation::Run() {
   std::pair<double, double> curvature_and_dist_to_execute =
           chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
   executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
+
+  for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
+      visualization::DrawPathOption(curvature_info.first, curvature_info.second.first,
+                                    curvature_info.second.second, local_viz_msg_);
+  }
+  viz_pub_.publish(local_viz_msg_);
 }
+
 
 }  // namespace navigation
