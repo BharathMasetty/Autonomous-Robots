@@ -88,6 +88,28 @@ class Navigation {
    */
   const double kLoopExecutionDelay = (1.0 / 20.0);
 
+  /**
+   * Maximum curvature (assumed to be the same on both sides of the car, so c_min = -1 *c_max).
+   *
+   * TODO Investigate this value.
+   */
+  const double kMaxCurvature = 1.0;
+
+  /**
+   * Number of curvatures to evaluate. These will be evenly spaced between c_min and c_max
+   * (see kMaxCurvature).
+   *
+   * This should be a positive odd number >= 3, so we can evaluate straight as an option.
+   */
+  const int kNumCurvaturesToEval = 41;
+
+  /**
+   * Curvatures to evaluate at each time step.
+   *
+   * Constant after object is constructed.
+   */
+  const std::vector<double> curvatures_to_evaluate_;
+
   // Current robot location.
   Eigen::Vector2f robot_loc_;
   // Current robot orientation.
@@ -180,6 +202,14 @@ class Navigation {
    * @param curvature   Curvature (inv radius of turning) to execute.
    */
   void executeTimeOptimalControl(const double &distance, const double &curvature);
+
+  /**
+   * Construct the curvatures to evaluate. Since this list will not change throughout the execution of the program,
+   * this will be called on start up to initialize a variable that will contain the curvatures to evaluate.
+   *
+   * @return List of curvatures to evaluate.
+   */
+  std::vector<double> constructCurvaturesToEvaluate();
 };
 
 }  // namespace navigation

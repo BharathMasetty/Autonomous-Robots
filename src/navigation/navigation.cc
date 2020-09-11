@@ -56,6 +56,7 @@ const float kEpsilon = 1e-5;
 namespace navigation {
 
 Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
+    curvatures_to_evaluate_(constructCurvaturesToEvaluate()),
     robot_loc_(0, 0),
     robot_angle_(0),
     robot_vel_(0, 0),
@@ -93,10 +94,27 @@ double Navigation::computeDecelDistance(const double &velocity_to_decelerate_fro
     return std::pow(velocity_to_decelerate_from, 2) / std::abs(kMaxDecel);
 }
 
-std::vector<double> Navigation::getCurvaturesToEvaluate() {
+std::vector<double> Navigation::constructCurvaturesToEvaluate() {
+    int half_num_to_eval = (kNumCurvaturesToEval - 1) / 2;
 
-    // TODO: Amanda, implement this
-    return {};
+    std::vector<double> eval_curves;
+    eval_curves.resize(kNumCurvaturesToEval);
+
+    // Calculating curves working our way out from 0 curvature instead of just coming up with a value to increment the
+    // curvature by each time to ensure that exactly 0 is an option and so that our curvature options are symmetrical
+    eval_curves[half_num_to_eval] = 0.0;
+    for (int i = 1; i <= half_num_to_eval; i++) {
+        int pos_curve_index = half_num_to_eval + i;
+        int neg_curve_index = half_num_to_eval - i;
+        double abs_curv = (((double) i ) / half_num_to_eval) * kMaxCurvature;
+        eval_curves[pos_curve_index] = abs_curv;
+        eval_curves[neg_curve_index] = -1 * abs_curv;
+    }
+    return eval_curves;
+}
+
+std::vector<double> Navigation::getCurvaturesToEvaluate() {
+    return curvatures_to_evaluate_;
 }
 
 std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
