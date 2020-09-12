@@ -104,6 +104,69 @@ class Navigation {
   const int kNumCurvaturesToEval = 41;
 
   /**
+   * X position of intermediate goal in base_link frame. Robot should try to get to this
+   * point for each iteration.
+   */
+  const double kIntermediateGoalX = 4.0;
+
+  /**
+   * Default value for the clearance that a path must have to be considered "reasonably open".
+   */
+  const double kDefaultDesiredClearance = 0.2;
+
+  /**
+   * Approximate stopping distance at max velocity.
+   *
+   * Calculation is stopping distance assuming continuous and perfect motor command execution, plus some additional
+   * buffer.
+   *
+   * This is not used for control - only for curvature evaluation.
+   *
+   * TODO: The additional buffer may need to be tuned.
+   */
+  const double kApproxMaxVelStoppingDist = ((std::pow(kMaxVel, 2)) / (abs(kMaxDecel) * 2)) + 0.3;
+
+  /**
+   * Default value for the additional length on top of the approximated stopping distance that a path must have to be
+   * considered a reasonably open path. See open_free_path_len_threshold_.
+   */
+  const double kDefaultFreePathBufferLenThreshold = 1.5;
+
+  /**
+   * Default weight that clearance should have in the path scoring function used when there are no "reasonably open"
+   * paths. See scoring_clearance_weight_.
+   */
+  const double kDefaultClearanceWeight = 0.1;
+
+  /**
+   * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
+   * paths. See scoring_curvature_weight_.
+   */
+  const double kDefaultCurvatureWeight = -0.3;
+
+  /**
+   * ROS parameter name for setting the clearance weight for the path scoring function.
+   */
+  const std::string kScoringClearanceWeightParamName = "scoring_clearance_weight";
+
+  /**
+   * ROS parameter name for setting the curvature weight for the path scoring function.
+   */
+  const std::string kScoringCurvatureWeightParamName = "scoring_curvature_weight";
+
+  /**
+   * ROS parameter name for setting the buffer length (added onto the approximate stopping distance) used to compute
+   * the threshold for a "reasonably open" path.
+   */
+  const std::string kOpenFreePathAfterStopDistThresholdParamName = "open_path_len_threshold";
+
+  /**
+   * ROS parameter name for setting the threshold for the clearance that a path needs to be considered "reasonably
+   * open".
+   */
+  const std::string kOpenClearanceThresholdParamName = "open_path_clearance_threshold";
+
+  /**
    * Curvatures to evaluate at each time step.
    *
    * Constant after object is constructed.
@@ -131,6 +194,35 @@ class Navigation {
   float nav_goal_angle_;
 
   /**
+   * Weight for the clearance in the scoring function. Clearance is good so this should be a positive number.
+   */
+  double scoring_clearance_weight_;
+
+  /**
+   * Weight for the curvature in the scoring function. Because our goal is along the x-axis, and lower (absolute)
+   * curvatures will bring us close to our goal faster, we want to minimize the curvature (therefore, this should be
+   * negative).
+   *
+   * TODO: If we end up with goals not aligned with the x axis, we should consider positively weighting the dot product
+   * of the vector to the goal location and the vector to the point along the curve that will get us closest to the
+   * goal location.
+   */
+  double scoring_curvature_weight_;
+
+  /**
+   * Minimum clearance that a path must have to be considered "reasonably open". Must be nonnegative. This is applied
+   * after the safety margin.
+   */
+  double open_clearance_threshold_;
+
+  /**
+   * Free path length that a path must have to be considered reasonably open. This is an approximate stopping distance
+   * at max velocity plus some additional distance. This is because we would like to traverse at max velocity for
+   * some time before having to stop in a "reasonably open" path.
+   */
+  double open_free_path_len_threshold_;
+
+  /**
    * Compute the distance it will take to decelerate to 0 from the current velocity.
    *
    * @param velocity_to_decelerate_from Velocity to decelerate from.
@@ -149,9 +241,6 @@ class Navigation {
   /**
    * Get the curvature to follow for the next timestep.
    *
-   * TODO: Amanda, implement this.
-   * TODO: May also need to add some idea of goal as a parameter.
-   *
    * @param curvature_and_obstacle_limitations_map  Map of curvature to a pair of the free path length and clearance for
    *                                                the curvature.
    *
@@ -159,6 +248,51 @@ class Navigation {
    */
   std::pair<double, double> chooseCurvatureForNextTimestep(
           std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map);
+
+  /**
+   * If there are several fairly open paths, we'll want to take the one that has the lowest curvature, because that
+   * will allow us to most quickly reach the goal x meters in front of us. This function returns all curvatures with
+   * "relatively open" paths (i.e. exceed some desired clearance threshold and some desired free path length
+   * threshold).
+   *
+   * @param curvature_and_obstacle_limitations_map  Map of curvature to a pair of the free path length and clearance for
+   *                                                the curvature.
+   *
+   * @return List of curvatures with relatively open paths.
+   */
+  std::vector<double> getCurvaturesWithReasonablyOpenPaths(
+          std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map);
+
+  /**
+   * Pick the curvature for the next timestep assuming there are no "reasonably open" paths. This takes into account
+   * the curvature (the absolute value of which we want to minimize, because increased absolute curvature increases how
+   * much we are deviating from the goal along the x axis), as well as the clearance (which we want to maximize) and
+   * the free path length (which we want to maximize).
+   *
+   * @param curvature_and_obstacle_limitations_map  Map of curvature to a pair of the free path length and clearance for
+   *                                                the curvature.
+   *
+   * @return Best curvature.
+   */
+  double chooseCurvatureForNextTimestepNoOpenOptions(
+          std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map);
+
+  /**
+   * Score the curvature for the next timestep.
+   *
+   * This takes into account the curvature (the absolute value of which we want to minimize, because increased absolute
+   * curvature increases how much we are deviating from the goal along the x axis), as well as the clearance (which we
+   * want to maximize) and the free path length (which we want to maximize).
+   *
+   * @param curvature       Curvature (inv turning radius).
+   * @param free_path_len   Free path length that can be followed along curvature (this is the obstacle-free path
+   *                        length, not the path length that we should follow to get closest to our goal, which may be
+   *                        less than the obstacle-free path length)
+   * @param clearance       Minimum clearance to obstacles along this curvature.
+   *
+   * @return Score for the curvature.
+   */
+  double scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance);
 
   /**
    * Get the free path length and clearance (distance to the closest obstacle) for each of the given curvatures.
@@ -210,6 +344,22 @@ class Navigation {
    * @return List of curvatures to evaluate.
    */
   std::vector<double> constructCurvaturesToEvaluate();
+
+  /**
+   * Get the free path length along the arc defined by the given curvature, that if traversed, would bring the car
+   * closest to the goal.
+   *
+   * Assumes that the goal is on the x-axis. If we want to expand this to arbitrary goals, we'll need to use the cosine
+   * rule.
+   *
+   * @param goal_in_bl_frame_x      X coordinate of the goal. Assumed to be positive.
+   * @param curvature               Curvature defining arc to traverse.
+   * @param obstacle_free_path_len  Path length along arc for which we will not hit any obstacles.
+   *
+   * @return Free path length along arc that will bring the car closest to the goal position without hitting obstacles.
+   */
+  double getFreePathLengthToClosestPointOfApproach(double goal_in_bl_frame_x, double curvature,
+                                                   double obstacle_free_path_len);
 };
 
 }  // namespace navigation

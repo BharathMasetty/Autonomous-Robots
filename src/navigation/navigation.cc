@@ -71,6 +71,19 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
       "base_link", "navigation_local");
   global_viz_msg_ = visualization::NewVisualizationMessage(
       "map", "navigation_global");
+  n->param(kOpenClearanceThresholdParamName, open_clearance_threshold_, kDefaultDesiredClearance);
+  double open_path_buffer_len;
+  n->param(kOpenFreePathAfterStopDistThresholdParamName, open_path_buffer_len, kDefaultFreePathBufferLenThreshold);
+  open_free_path_len_threshold_ = open_path_buffer_len + kApproxMaxVelStoppingDist;
+
+  n->param(kScoringClearanceWeightParamName, scoring_clearance_weight_, kDefaultClearanceWeight);
+  n->param(kScoringCurvatureWeightParamName, scoring_curvature_weight_, kDefaultCurvatureWeight);
+
+  ROS_INFO_STREAM("Open path len threshold " << open_free_path_len_threshold_);
+  ROS_INFO_STREAM("Open path clearance threshold " << open_clearance_threshold_);
+  ROS_INFO_STREAM("Scoring clearance weight " << scoring_clearance_weight_);
+  ROS_INFO_STREAM("Scoring curvature weight " << scoring_curvature_weight_);
+
   InitRosHeader("base_link", &drive_msg_.header);
 }
 
@@ -117,14 +130,94 @@ std::vector<double> Navigation::getCurvaturesToEvaluate() {
     return curvatures_to_evaluate_;
 }
 
+double Navigation::getFreePathLengthToClosestPointOfApproach(double goal_in_bl_frame_x, double curvature,
+                                                             double obstacle_free_path_len) {
+    if (curvature == 0.0) {
+        return obstacle_free_path_len;
+    }
+
+    double rad_of_turn = 1.0 / abs(curvature);
+
+    // This is the angle between the line from the center of turning to the goal position
+    double arc_angle = atan(goal_in_bl_frame_x / rad_of_turn);
+
+    // arc length is turning radius times angle
+    return std::min(obstacle_free_path_len, arc_angle * rad_of_turn);
+}
+
 std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
         std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map) {
 
-    // TODO: Amanda, implement this
-    double best_curvature = 0;
-    double distance_for_curvature = 0;
+    // TODO should we change the free path length to the one that will get us closest to the intermediate goal or keep
+    //  it as just obstacle free?
+    std::vector<double> reasonably_open_curvatures = getCurvaturesWithReasonablyOpenPaths(
+            curvature_and_obstacle_limitations_map);
 
-    return std::make_pair(best_curvature, distance_for_curvature);
+    double best_curvature;
+    if (reasonably_open_curvatures.empty()) {
+
+        // If there are no reasonably open curvatures, use the fallback weighing function to weigh between the free
+        // path length and other considerations (proximity to goal, clearance)
+        best_curvature = chooseCurvatureForNextTimestepNoOpenOptions(curvature_and_obstacle_limitations_map);
+    } else {
+
+        // Get the smallest curvature, since that is the most direct path to the goal.
+        best_curvature = kMaxCurvature;
+        for (const double &curvature : reasonably_open_curvatures) {
+            if (abs(curvature) <= abs(best_curvature)) {
+                if (abs(curvature) == abs(best_curvature)) {
+                    // If they're the same curvature, but only left vs right, use the one with the higher clearance
+                    if (curvature_and_obstacle_limitations_map.at(curvature).second >
+                    curvature_and_obstacle_limitations_map.at(best_curvature).second) {
+                        best_curvature = curvature;
+                    }
+                } else {
+                    best_curvature = curvature;
+                }
+            }
+        }
+    }
+
+    return std::make_pair(best_curvature,
+            getFreePathLengthToClosestPointOfApproach(kIntermediateGoalX, best_curvature,
+                    curvature_and_obstacle_limitations_map.at(best_curvature).first));
+}
+
+std::vector<double> Navigation::getCurvaturesWithReasonablyOpenPaths(
+        std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map) {
+    std::vector<double> reasonably_open_curvatures;
+    for (const auto &curvature_info : curvature_and_obstacle_limitations_map) {
+        double curvature = curvature_info.first;
+        double distance = curvature_info.second.first;
+        double clearance = curvature_info.second.second;
+
+        if ((distance >= open_free_path_len_threshold_) && (clearance >= open_clearance_threshold_)) {
+            reasonably_open_curvatures.emplace_back(curvature);
+        }
+    }
+
+    return reasonably_open_curvatures;
+}
+
+double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map) {
+
+    std::pair<double, double> best_curvature_and_score = std::make_pair(kMaxCurvature, -1 * std::numeric_limits<double>::infinity());
+
+    for (const auto &curvature_info : curvature_and_obstacle_limitations_map) {
+        double curvature = curvature_info.first;
+        double distance = curvature_info.second.first;
+        double clearance = curvature_info.second.second;
+
+        double score = scoreCurvature(curvature, distance, clearance);
+        if (best_curvature_and_score.second < score) {
+            best_curvature_and_score = std::make_pair(curvature, score);
+        }
+    }
+    return best_curvature_and_score.first;
+}
+
+double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance) {
+    return free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature));
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
@@ -187,7 +280,6 @@ void Navigation::Run() {
   std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
           getFreePathLengthsAndClearances(curvatures_to_evaluate);
 
-  // TODO: (Amanda) may need to supply some notion of goal to this function.
   std::pair<double, double> curvature_and_dist_to_execute =
           chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
   executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
