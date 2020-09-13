@@ -186,6 +186,24 @@ class Navigation {
   // Odometry-reported robot angle.
   float odom_angle_;
 
+  // PointCloud from LaserScan
+  std::vector<Eigen::Vector2f> cloud_;
+  double scan_time_;
+  
+  
+  // Add car body dimensions for free path lengths - Notation from Amanda's Solutions
+  //TODO: get the actual values from car considering safety margin
+  const float b = 0.1;
+  const float l = 0.15;
+  const float w = 0.1;
+  const float m = 0.05; // Choosing a safety margin of 5 cm for now.
+  // Constants for simpler calculations
+
+  const float kLengthFromAxleToSafetyFront = m + 0.5*(l+b);
+  const float kLengthFromBaseToSafetySide = 0.5 * w + m;
+   
+
+
   // Whether navigation is complete.
   bool nav_complete_;
   // Navigation goal location.
@@ -320,6 +338,7 @@ class Navigation {
    * @return Pair with the first entry as the free path length and second entry as the clearance.
    */
   std::pair<double, double> getFreePathLengthAndClearance(const double &curvature);
+  
 
   /**
    * Command the drive to traverse the given distance along this curvature. Should only issue one command (we may

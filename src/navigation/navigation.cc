@@ -42,6 +42,7 @@ using std::vector;
 
 using namespace math_util;
 using namespace ros_helpers;
+using namespace std;
 
 namespace {
 ros::Publisher drive_pub_;
@@ -63,7 +64,7 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
     robot_omega_(0),
     nav_complete_(true),
     nav_goal_loc_(0, 0),
-    nav_goal_angle_(0) {
+    nav_goal_angle_(0)	{
   drive_pub_ = n->advertise<AckermannCurvatureDriveMsg>(
       "ackermann_curvature_drive", 1);
   viz_pub_ = n->advertise<VisualizationMsg>("visualization", 1);
@@ -101,6 +102,8 @@ void Navigation::UpdateOdometry(const Vector2f& loc,
 
 void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
                                    double time) {
+  cloud_ = cloud;
+  scan_time_ = time; 
 }
 
 double Navigation::computeDecelDistance(const double &velocity_to_decelerate_from) {
@@ -234,12 +237,97 @@ std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLen
 
 std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double &curvature) {
 
-    // TODO: Bharath, implement this or replace the implementation in getFreePathLengthsAndClearances and do it in
-    //  batch.
+    // TODO: Bharath: Keep thinking of a better way to do this 
+    float free_path_len = std::numeric_limits<float>::infinity();
+    float clearance = std::numeric_limits<float>::infinity();
+    float r;
+    float r_min;
+    float r_max;
+    float r_fc;
+    float r_p;
+    float pp_hit;
+    float theta;
 
-    double free_path_len = 0;
-    double clearance = 0;
+    // Center of rotation
+    Eigen::Vector2f IC;
+    // To search in part of point cloud
+    const int startIndex = 184; // -90 Degrees  
+    const int endIndex = 896;   // +90 Degrees
+    std::vector<double> notHitting_r;
+    // aplha is angle made by r and r_p at IC
+    // We are keeping track of this extra angle for notHitting points and 
+    // free_path_len point to reduce search space for clearance.
+    std::vector<double> notHitting_alpha;
+    // Initializing freePathalpha at pi radians
+    double freePathalpha = 3.14;
+    
+    if (abs(curvature) > 0) { 
+    IC.x() = 0.0;
+    IC.y() = 1/curvature;
+    r = abs(1 / curvature);
+    r_min = r - kLengthFromBaseToSafetySide;
+    r_max = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r+ kLengthFromBaseToSafetySide, 2) , 0.5);
+    r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5); 
+    
+    // Converting cloud to polar
+    for(int i=startIndex; i<=endIndex; i++){
+	
+        float r_p_square = std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y() - IC.y(), 2);
+	r_p = std::pow(r_p_square, 0.5);
+	double op = std::pow(std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y(), 2), 0.5);
+        	
+	// First check for free_path_length
+	if (r_p >= r_min && r_p <= r_max){
+		
+		// Side Hit
+		if (r_p < r_fc){
+			float x = std::pow(r_p_square - std::pow(r - kLengthFromBaseToSafetySide ,2)  , 0.5);
+                	pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y()- kLengthFromBaseToSafetySide, 2); 
+        	} 
+		// Front Hit		
+		if ( r_p >= r_fc){
+			float y = r - std::pow(r_p_square - std::pow(kLengthFromAxleToSafetyFront ,2) ,0.5);
+                	pp_hit = std::pow(cloud_[i].x()- kLengthFromAxleToSafetyFront , 2) + std::pow(cloud_[i].y()-y , 2);	
+		}
+		
+		theta =  acos(1 - pp_hit/(2*r_p_square));
+		float len = r*theta;
+		
+		if (len <= free_path_len){
+			free_path_len = len;
+			freePathalpha = acos((r*r + r_p_square - op*op)/(2*r*r_p));
+		}	
+	}else{
+     		// Stacking up Non-Htting points
+		notHitting_r.push_back(r_p);
+		notHitting_alpha.push_back(acos((r*r + r_p_square - op*op)/(2*r*r_p)));
+    		}
+	} 
 
+    // Next Check  Clearance
+    for (unsigned int i=0; i<=notHitting_r.size(); i++){
+    	float delta_r = std::min(abs(r_p-r_min), abs(r_p-r_max));
+	if (notHitting_alpha[i] <= freePathalpha){
+		clearance = std::min(clearance, delta_r);
+	}
+    }
+    }
+
+    // When moving along a straight line
+    if (curvature == 0.0){
+  	// default 
+	for (int i=startIndex; i<=endIndex; i++){
+		if (abs(cloud_[i].y()) <= kLengthFromBaseToSafetySide){
+			free_path_len = std::min(free_path_len, cloud_[i].x() - kLengthFromAxleToSafetyFront);
+		}	
+	}
+	for (int i=startIndex; i<=endIndex; i++){
+		if(cloud_[i].x() <= free_path_len){
+			clearance = std::min(clearance, abs(cloud_[i].y() - kLengthFromBaseToSafetySide));
+		}
+	}
+    }
+    
     return std::make_pair(free_path_len, clearance);
 }
 
@@ -275,21 +363,22 @@ void Navigation::Run() {
     ROS_ERROR("Still no subscribers to Drive message. Not yet sending velocities.");
     return;
   }
-
+ 
   std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
+
   std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
           getFreePathLengthsAndClearances(curvatures_to_evaluate);
 
   std::pair<double, double> curvature_and_dist_to_execute =
           chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
   executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
-
+  
   for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
       visualization::DrawPathOption(curvature_info.first, curvature_info.second.first,
                                     curvature_info.second.second, local_viz_msg_);
+	
   }
   viz_pub_.publish(local_viz_msg_);
 }
-
 
 }  // namespace navigation
