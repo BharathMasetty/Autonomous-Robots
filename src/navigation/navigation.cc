@@ -372,12 +372,18 @@ void Navigation::Run() {
   std::pair<double, double> curvature_and_dist_to_execute =
           chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
   executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
-  
+
   for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
+    if (curvature_info.first != curvature_and_dist_to_execute.first) {
       visualization::DrawPathOption(curvature_info.first, curvature_info.second.first,
                                     curvature_info.second.second, local_viz_msg_);
-	
+    }
   }
+
+  // Add the best curvature last so it is highlighed in the visualization
+  double best_curvature = curvature_and_dist_to_execute.first;
+  std::pair<double, double> best_curvature_info = free_path_len_and_clearance_by_curvature[best_curvature];
+  visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second, local_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
 
