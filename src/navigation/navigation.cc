@@ -265,6 +265,9 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
         IC.x() = 0.0;
         IC.y() = 1/curvature;
         r = abs(1 / curvature);
+
+        // Set the free path length to the the circumference of the circle around the center of turning (max)
+        free_path_len = 2.0 * M_PI * r;
         r_min = r - kLengthFromBaseToSafetySide;
         r_max = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r+ kLengthFromBaseToSafetySide, 2) , 0.5);
         r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5);
