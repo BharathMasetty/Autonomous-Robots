@@ -320,19 +320,22 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     // When moving along a straight line
     if (curvature == 0.0) {
         // default
+	std::vector<Eigen::Vector2f> notHittingPoints;
         for (int i=startIndex; i<=endIndex; i++) {
             if (abs(cloud_[i].y()) <= kLengthFromBaseToSafetySide) {
                 free_path_len = std::min(free_path_len, cloud_[i].x() - kLengthFromAxleToSafetyFront);
-            }
+            }else{
+	    	notHittingPoints.push_back(cloud_[i]);
+	    }
         }
-        for (int i=startIndex; i<=endIndex; i++) {
-            double new_clearance = abs(cloud_[i].y() - kLengthFromBaseToSafetySide);
+        for (unsigned int i=0; i<=notHittingPoints.size(); i++) {
+            double new_clearance = abs(notHittingPoints[i].y()) - kLengthFromBaseToSafetySide;
 
             if (free_path_len > kClearanceOffset){
-                if((cloud_[i].x()- kLengthFromAxleToSafetyFront) <= free_path_len - kClearanceOffset) {
+                if((notHittingPoints[i].x()- kLengthFromAxleToSafetyFront) <= free_path_len - kClearanceOffset) {
                     clearance = std::min((double) clearance, new_clearance);
                 }
-            } else if((cloud_[i].x()-kLengthFromAxleToSafetyFront) <= free_path_len){
+            } else if((notHittingPoints[i].x()-kLengthFromAxleToSafetyFront) <= free_path_len){
                 clearance = std::min((double) clearance, new_clearance);
             }
         }
@@ -393,7 +396,7 @@ void Navigation::Run() {
   // Add the best curvature last so it is highlighted in the visualization
   double best_curvature = curvature_and_dist_to_execute.first;
   std::pair<double, double> best_curvature_info = free_path_len_and_clearance_by_curvature[best_curvature];
-  visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second, local_viz_msg_);
+  visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second+kLengthFromBaseToSafetySide, local_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
 
