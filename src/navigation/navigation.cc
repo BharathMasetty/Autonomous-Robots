@@ -303,12 +303,11 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 		notHitting_alpha.push_back(acos((r*r + r_p_square - op*op)/(2*r*r_p)));
     		}
 	} 
-
+ 	
     // Next Check  Clearance
     for (unsigned int i=0; i<=notHitting_r.size(); i++){
-    	float delta_r = std::min(abs(r_p-r_min), abs(r_p-r_max));
 	if (notHitting_alpha[i] <= freePathalpha){
-		clearance = std::min(clearance, delta_r);
+		clearance = std::min((double)clearance, std::min(abs(notHitting_r[i] - r_min), abs(notHitting_r[i] - r_max)));
 	}
     }
     }
