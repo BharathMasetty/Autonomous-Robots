@@ -225,8 +225,6 @@ double Navigation::scoreCurvature(const double &curvature, const double &free_pa
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
         const std::vector<double> &curvatures_to_evaluate) {
-    // TODO: Bharath, feel free to replace this implementation if you can get the results more efficiently as a batch
-    //  process. If you do, remove getFreePathLengthAndClearance.
 
     std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature;
     for (const double &curvature : curvatures_to_evaluate) {
@@ -263,78 +261,81 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     // Initializing freePathalpha at pi radians
     double freePathalpha = 3.14;
     
-    if (abs(curvature) > 0) { 
-    IC.x() = 0.0;
-    IC.y() = 1/curvature;
-    r = abs(1 / curvature);
-    r_min = r - kLengthFromBaseToSafetySide;
-    r_max = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r+ kLengthFromBaseToSafetySide, 2) , 0.5);
-    r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5); 
+    if (abs(curvature) > 0) {
+        IC.x() = 0.0;
+        IC.y() = 1/curvature;
+        r = abs(1 / curvature);
+        r_min = r - kLengthFromBaseToSafetySide;
+        r_max = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r+ kLengthFromBaseToSafetySide, 2) , 0.5);
+        r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5);
     
-    // Converting cloud to polar
-    for(int i=startIndex; i<=endIndex; i++){
-	
-        float r_p_square = std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y() - IC.y(), 2);
-	r_p = std::pow(r_p_square, 0.5);
-	double op = std::pow(std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y(), 2), 0.5);
-        	
-	// First check for free_path_length
-	if (r_p >= r_min && r_p <= r_max){
-		
-		// Side Hit
-		if (r_p < r_fc){
-			float x = std::pow(r_p_square - std::pow(r - kLengthFromBaseToSafetySide ,2)  , 0.5);
-                	pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y()- kLengthFromBaseToSafetySide, 2); 
-        	} 
-		// Front Hit		
-		if ( r_p >= r_fc){
-			float y = r - std::pow(r_p_square - std::pow(kLengthFromAxleToSafetyFront ,2) ,0.5);
-                	pp_hit = std::pow(cloud_[i].x()- kLengthFromAxleToSafetyFront , 2) + std::pow(cloud_[i].y()-y , 2);	
-		}
-		
-		theta =  acos(1 - pp_hit/(2*r_p_square));
-		float len = r*theta;
-		
-		if (len <= free_path_len){
-			free_path_len = len;
-			freePathalpha = acos((r*r + r_p_square - op*op)/(2*r*r_p));
-		}	
-	}else{
-     		// Stacking up Non-Htting points
-		notHitting_r.push_back(r_p);
-		notHitting_alpha.push_back(acos((r*r + r_p_square - op*op)/(2*r*r_p)));
-    		}
-	} 
+        // Converting cloud to polar
+        for(int i=startIndex; i<=endIndex; i++) {
+            float r_p_square = std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y() - IC.y(), 2);
+            r_p = std::pow(r_p_square, 0.5);
+            double op = std::pow(std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y(), 2), 0.5);
+
+            // First check for free_path_length
+            if (r_p >= r_min && r_p <= r_max) {
+
+                // Side Hit
+                if (r_p < r_fc){
+                    float x = std::pow(r_p_square - std::pow(r - kLengthFromBaseToSafetySide,2) , 0.5);
+                    pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y()- kLengthFromBaseToSafetySide, 2);
+                }
+
+                // Front Hit
+                if ( r_p >= r_fc) {
+                    float y = r - std::pow(r_p_square - std::pow(kLengthFromAxleToSafetyFront ,2) ,0.5);
+                    pp_hit = std::pow(cloud_[i].x()- kLengthFromAxleToSafetyFront , 2) + std::pow(cloud_[i].y()-y , 2);
+                }
+
+                theta =  acos(1 - pp_hit/(2*r_p_square));
+                float len = r*theta;
+
+                if (len <= free_path_len){
+                    free_path_len = len;
+                    freePathalpha = acos((r*r + r_p_square - op*op)/(2*r*r_p));
+                }
+            } else {
+                // Stacking up Non-Htting points
+                notHitting_r.push_back(r_p);
+                notHitting_alpha.push_back(acos((r*r + r_p_square - op*op)/(2*r*r_p)));
+            }
+        }
  	
-    // Next Check  Clearance
-    for (unsigned int i=0; i<=notHitting_r.size(); i++){
-	if (free_path_len > kClearanceOffset){
-		if (r*(freePathalpha - notHitting_alpha[i]) >= kClearanceOffset){
-			clearance = std::min((double)clearance, std::min(abs(notHitting_r[i] - r_min), abs(notHitting_r[i] - r_max)));
-			}
-	}else if (notHitting_alpha[i] < freePathalpha){
-			clearance = std::min((double)clearance, std::min(abs(notHitting_r[i] - r_min), abs(notHitting_r[i] - r_max)));
-		}
-    }
+        // Next Check  Clearance
+        for (unsigned int i=0; i<=notHitting_r.size(); i++) {
+            double possible_new_clearance = std::min(abs(notHitting_r[i] - r_min), abs(notHitting_r[i] - r_max));
+            if (free_path_len > kClearanceOffset) {
+                if (r*(freePathalpha - notHitting_alpha[i]) >= kClearanceOffset) {
+                    clearance = std::min((double)clearance, possible_new_clearance);
+                }
+            } else if (notHitting_alpha[i] < freePathalpha) {
+                clearance = std::min((double)clearance, possible_new_clearance);
+            }
+        }
     }
 
     // When moving along a straight line
-    if (curvature == 0.0){
-  	// default 
-	for (int i=startIndex; i<=endIndex; i++){
-		if (abs(cloud_[i].y()) <= kLengthFromBaseToSafetySide){
-			free_path_len = std::min(free_path_len, cloud_[i].x() - kLengthFromAxleToSafetyFront);
-		}	
-	}
-	for (int i=startIndex; i<=endIndex; i++){
-		if (free_path_len > kClearanceOffset){
-			if((cloud_[i].x()- kLengthFromAxleToSafetyFront) <= free_path_len - kClearanceOffset){
-				clearance = std::min(clearance, abs(cloud_[i].y() - kLengthFromBaseToSafetySide));
-			}
-		}else if((cloud_[i].x()-kLengthFromAxleToSafetyFront) <= free_path_len){
-		 	clearance = std::min(clearance, abs(cloud_[i].y() - kLengthFromBaseToSafetySide));
-		}
-	}
+    if (curvature == 0.0) {
+        // default
+        for (int i=startIndex; i<=endIndex; i++) {
+            if (abs(cloud_[i].y()) <= kLengthFromBaseToSafetySide) {
+                free_path_len = std::min(free_path_len, cloud_[i].x() - kLengthFromAxleToSafetyFront);
+            }
+        }
+        for (int i=startIndex; i<=endIndex; i++) {
+            double new_clearance = abs(cloud_[i].y() - kLengthFromBaseToSafetySide);
+
+            if (free_path_len > kClearanceOffset){
+                if((cloud_[i].x()- kLengthFromAxleToSafetyFront) <= free_path_len - kClearanceOffset) {
+                    clearance = std::min((double) clearance, new_clearance);
+                }
+            } else if((cloud_[i].x()-kLengthFromAxleToSafetyFront) <= free_path_len){
+                clearance = std::min((double) clearance, new_clearance);
+            }
+        }
     }
     
     return std::make_pair(free_path_len, clearance);
@@ -389,7 +390,7 @@ void Navigation::Run() {
     }
   }
 
-  // Add the best curvature last so it is highlighed in the visualization
+  // Add the best curvature last so it is highlighted in the visualization
   double best_curvature = curvature_and_dist_to_execute.first;
   std::pair<double, double> best_curvature_info = free_path_len_and_clearance_by_curvature[best_curvature];
   visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second, local_viz_msg_);
