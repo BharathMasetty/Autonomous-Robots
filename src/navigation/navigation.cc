@@ -253,6 +253,8 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     // To search in part of point cloud
     const int startIndex = 184; // -90 Degrees  
     const int endIndex = 896;   // +90 Degrees
+    // TODO: Probably make this a ROS Param Later as needed.
+    const double kClearanceOffset = 0.1; 
     std::vector<double> notHitting_r;
     // aplha is angle made by r and r_p at IC
     // We are keeping track of this extra angle for notHitting points and 
@@ -306,9 +308,13 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
  	
     // Next Check  Clearance
     for (unsigned int i=0; i<=notHitting_r.size(); i++){
-	if (notHitting_alpha[i] <= freePathalpha){
-		clearance = std::min((double)clearance, std::min(abs(notHitting_r[i] - r_min), abs(notHitting_r[i] - r_max)));
-	}
+	if (free_path_len > kClearanceOffset){
+		if (r*(freePathalpha - notHitting_alpha[i]) >= kClearanceOffset){
+			clearance = std::min((double)clearance, std::min(abs(notHitting_r[i] - r_min), abs(notHitting_r[i] - r_max)));
+			}
+	}else if (notHitting_alpha[i] < freePathalpha){
+			clearance = std::min((double)clearance, std::min(abs(notHitting_r[i] - r_min), abs(notHitting_r[i] - r_max)));
+		}
     }
     }
 
@@ -321,8 +327,12 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 		}	
 	}
 	for (int i=startIndex; i<=endIndex; i++){
-		if(cloud_[i].x() <= free_path_len){
-			clearance = std::min(clearance, abs(cloud_[i].y() - kLengthFromBaseToSafetySide));
+		if (free_path_len > kClearanceOffset){
+			if((cloud_[i].x()- kLengthFromAxleToSafetyFront) <= free_path_len - kClearanceOffset){
+				clearance = std::min(clearance, abs(cloud_[i].y() - kLengthFromBaseToSafetySide));
+			}
+		}else if((cloud_[i].x()-kLengthFromAxleToSafetyFront) <= free_path_len){
+		 	clearance = std::min(clearance, abs(cloud_[i].y() - kLengthFromBaseToSafetySide));
 		}
 	}
     }
