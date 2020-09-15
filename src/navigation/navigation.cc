@@ -34,6 +34,7 @@
 #include "navigation.h"
 #include "visualization/visualization.h"
 
+
 using Eigen::Vector2f;
 using amrl_msgs::AckermannCurvatureDriveMsg;
 using amrl_msgs::VisualizationMsg;
@@ -64,7 +65,7 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
     robot_omega_(0),
     nav_complete_(true),
     nav_goal_loc_(0, 0),
-    nav_goal_angle_(0)	{
+    nav_goal_angle_(0) {
   drive_pub_ = n->advertise<AckermannCurvatureDriveMsg>(
       "ackermann_curvature_drive", 1);
   viz_pub_ = n->advertise<VisualizationMsg>("visualization", 1);
@@ -84,6 +85,9 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
   ROS_INFO_STREAM("Open path clearance threshold " << open_clearance_threshold_);
   ROS_INFO_STREAM("Scoring clearance weight " << scoring_clearance_weight_);
   ROS_INFO_STREAM("Scoring curvature weight " << scoring_curvature_weight_);
+
+  // This initializes the vector with the correct number of commands with curvature 0 and velocity 0
+  recent_executed_commands.resize(kNumActLatencySteps);
 
   InitRosHeader("base_link", &drive_msg_.header);
 }
@@ -107,7 +111,7 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
 }
 
 double Navigation::computeDecelDistance(const double &velocity_to_decelerate_from) {
-    return std::pow(velocity_to_decelerate_from, 2) / std::abs(kMaxDecel);
+    return std::pow(velocity_to_decelerate_from, 2) / (2 * std::abs(kMaxDecel));
 }
 
 std::vector<double> Navigation::constructCurvaturesToEvaluate() {
@@ -348,24 +352,46 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 }
 
 void Navigation::executeTimeOptimalControl(const double &distance, const double &curvature) {
-    // TODO: Kunal implement this.
 
-    // This will probably have to be a bit different since we need to add latency compensation, but I've copied and
-    // commented out the code from assignment 0 for reference.
-    // if (computeDecelDistance(current_velocity_) >= distance) {
-    //   // Decelerate
-    //   current_velocity_ = std::max(0.0, kLoopExecutionDelay * kMaxDecel + current_velocity_);
-    // } else {
-    //   if (current_velocity_ < kMaxVel) {
-    //     // Accelerate
-    //     current_velocity_ = std::min(kMaxVel, kMaxAccel * kLoopExecutionDelay + current_velocity_);
-    //   }
-    //   // If not accelerating, we'll keep the same velocity as before
-    // }
+    // Get the velocity for each of the timesteps that we need to account for in the latency compensation
+    double compensation_velocity_sum = 0;
+    for (int i = 0; i < kNumActLatencySteps; i++) {
+        compensation_velocity_sum += recent_executed_commands[i].velocity;
+    }
 
-    // AckermannCurvatureDriveMsg drive_msg;
-    // drive_msg.velocity = current_velocity_;
-    // drive_pub_.publish(drive_msg);
+    double compensation_distance = kLoopExecutionDelay * compensation_velocity_sum;
+    double distance_remaining = std::max(0.0, distance - compensation_distance);
+
+    ROS_INFO_STREAM("Dist, dist after compensation " << distance << ", " << distance_remaining);
+    double current_velocity = recent_executed_commands[0].velocity;
+    if (distance_remaining > kStopDist) {
+	    ROS_INFO_STREAM("Compute Decel Distance " << computeDecelDistance(current_velocity));
+        // Implementing 1-D TOC on an arbitrary arc, the parameters to be considered are new_distances and curvature
+        if (computeDecelDistance(current_velocity) >= distance_remaining) {
+            // Decelerate
+            current_velocity = std::max(0.0, kLoopExecutionDelay * kMaxDecel + current_velocity);
+        } else {
+            // Latency compensation
+            if (current_velocity < kMaxVel) {
+                // Accelerate
+                current_velocity = std::min(kMaxVel, kMaxAccel * kLoopExecutionDelay + current_velocity);
+            }
+            // If not accelerating, we'll keep the same velocity as before
+        }
+    } else {
+        ROS_INFO_STREAM("Within target distance");
+        current_velocity = 0.0;
+    }
+
+    AckermannCurvatureDriveMsg drive_msg;
+    drive_msg.velocity = current_velocity;
+    drive_msg.curvature = curvature;
+    drive_pub_.publish(drive_msg);
+
+    for (int i = kNumActLatencySteps - 1; i > 0; i--){
+        recent_executed_commands[i] = recent_executed_commands[i - 1];
+    }
+    recent_executed_commands[0] = drive_msg;
 }
 
 void Navigation::Run() {

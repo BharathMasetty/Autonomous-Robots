@@ -19,6 +19,7 @@
 */
 //========================================================================
 
+#include <amrl_msgs/AckermannCurvatureDriveMsg.h>
 #include <vector>
 #include <unordered_map>
 
@@ -84,9 +85,19 @@ class Navigation {
   const double kMaxVel = 1.0;
 
   /**
+   * If we have this distance remaining, say that we've met the goal.
+   */
+  const double kStopDist = 0.03;
+
+  /**
    * Amount of time between each loop execution.
    */
   const double kLoopExecutionDelay = (1.0 / 20.0);
+
+  /**
+   * Actuation latency (time between when command is issued to when motors execute the command.
+   */
+  const double kActuationLatency = 0.15;
 
   /**
    * Maximum curvature (assumed to be the same on both sides of the car, so c_min = -1 *c_max).
@@ -173,6 +184,17 @@ class Navigation {
    */
   const std::vector<double> curvatures_to_evaluate_;
 
+  /**
+   * Number of timesteps to account for in latency compensation. (Should be actuation latency
+   */
+  const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay);
+
+  /**
+   * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
+   * least recent command last.
+   */
+  std::vector<amrl_msgs::AckermannCurvatureDriveMsg> recent_executed_commands;
+
   // Current robot location.
   Eigen::Vector2f robot_loc_;
   // Current robot orientation.
@@ -201,8 +223,6 @@ class Navigation {
   // Constants for simpler calculations
   const float kLengthFromAxleToSafetyFront = m + 0.5*(l+b);
   const float kLengthFromBaseToSafetySide = 0.5 * w + m;
-   
-
 
   // Whether navigation is complete.
   bool nav_complete_;
