@@ -192,13 +192,13 @@ class Navigation {
   
   
   // Add car body dimensions for free path lengths - Notation from Amanda's Solutions
-  //TODO: get the actual values from car considering safety margin
-  const float b = 0.1;
-  const float l = 0.15;
-  const float w = 0.1;
-  const float m = 0.05; // Choosing a safety margin of 5 cm for now.
-  // Constants for simpler calculations
+  //TODO: verify that simulator values match reality and consider shrinking safety margin
+  const float b = 0.324;
+  const float l = 0.535;
+  const float w = 0.281;
+  const float m = 0.2; // Choosing a safety margin of 20 cm to be conservative
 
+  // Constants for simpler calculations
   const float kLengthFromAxleToSafetyFront = m + 0.5*(l+b);
   const float kLengthFromBaseToSafetySide = 0.5 * w + m;
    
