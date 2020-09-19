@@ -110,6 +110,31 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
   scan_time_ = time; 
 }
 
+void Navigation::addCarDimensionsAndSafetyMarginToVisMessage(amrl_msgs::VisualizationMsg &viz_msg) {
+
+    // Draw the car
+    Vector2f back_left_corner(-kAxleToRearDist, (-0.5 * w));
+    Vector2f front_left_corner(kAxleToFrontDist, (-0.5 * w));
+    Vector2f front_right_corner(kAxleToFrontDist, (0.5 * w));
+    Vector2f back_right_corner(-kAxleToRearDist, (0.5 * w));
+
+    visualization::DrawLine(back_left_corner, front_left_corner, kCarBoundariesColor, viz_msg);
+    visualization::DrawLine(front_left_corner, front_right_corner, kCarBoundariesColor, viz_msg);
+    visualization::DrawLine(front_right_corner, back_right_corner, kCarBoundariesColor, viz_msg);
+    visualization::DrawLine(back_right_corner, back_left_corner, kCarBoundariesColor, viz_msg);
+
+    // Draw the safety margin
+    Vector2f safety_back_left_corner(back_left_corner.x() - m, back_left_corner.y() - m);
+    Vector2f safety_front_left_corner(front_left_corner.x() + m, front_left_corner.y() - m);
+    Vector2f safety_front_right_corner(front_right_corner.x() + m, front_right_corner.y() + m);
+    Vector2f safety_back_right_corner(back_right_corner.x() - m, back_right_corner.y() + m);
+
+    visualization::DrawLine(safety_back_left_corner, safety_front_left_corner, kCarSafetyMarginColor, viz_msg);
+    visualization::DrawLine(safety_front_left_corner, safety_front_right_corner, kCarSafetyMarginColor, viz_msg);
+    visualization::DrawLine(safety_front_right_corner, safety_back_right_corner, kCarSafetyMarginColor, viz_msg);
+    visualization::DrawLine(safety_back_right_corner, safety_back_left_corner, kCarSafetyMarginColor, viz_msg);
+}
+
 double Navigation::computeDecelDistance(const double &velocity_to_decelerate_from) {
     return std::pow(velocity_to_decelerate_from, 2) / (2 * std::abs(kMaxDecel));
 }
@@ -396,6 +421,7 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
 
 void Navigation::Run() {
   visualization::ClearVisualizationMsg(local_viz_msg_);
+  addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
 
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.

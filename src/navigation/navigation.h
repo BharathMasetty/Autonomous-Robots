@@ -20,6 +20,7 @@
 //========================================================================
 
 #include <amrl_msgs/AckermannCurvatureDriveMsg.h>
+#include <amrl_msgs/VisualizationMsg.h>
 #include <vector>
 #include <unordered_map>
 
@@ -190,6 +191,16 @@ class Navigation {
   const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay);
 
   /**
+   * Color for drawing car boundaries.
+   */
+  const uint32_t kCarBoundariesColor = 0x34b4eb;
+
+  /**
+   * Color for drawing safety margin boundaries.
+   */
+  const uint32_t kCarSafetyMarginColor = 0x34eb4c;
+
+  /**
    * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
    * least recent command last.
    */
@@ -212,13 +223,14 @@ class Navigation {
   std::vector<Eigen::Vector2f> cloud_;
   double scan_time_;
   
-  
   // Add car body dimensions for free path lengths - Notation from Amanda's Solutions
   //TODO: verify that simulator values match reality and consider shrinking safety margin
   const float b = 0.324;
   const float l = 0.535;
   const float w = 0.281;
   const float m = 0.2; // Choosing a safety margin of 20 cm to be conservative
+  const float kAxleToRearDist = 0.5 * (l - b);
+  const float kAxleToFrontDist = l - kAxleToRearDist;
 
   // Constants for simpler calculations
   const float kLengthFromAxleToSafetyFront = m + 0.5*(l+b);
@@ -259,6 +271,13 @@ class Navigation {
    * some time before having to stop in a "reasonably open" path.
    */
   double open_free_path_len_threshold_;
+
+  /**
+   * Add components to the visualization message for seeing the car size and car+safety margin size.
+   *
+   * @param viz_msg[in/out] Visualization message to update. Should be the local viz msg.
+   */
+  void addCarDimensionsAndSafetyMarginToVisMessage(amrl_msgs::VisualizationMsg &viz_msg);
 
   /**
    * Compute the distance it will take to decelerate to 0 from the current velocity.
@@ -358,7 +377,6 @@ class Navigation {
    * @return Pair with the first entry as the free path length and second entry as the clearance.
    */
   std::pair<double, double> getFreePathLengthAndClearance(const double &curvature);
-  
 
   /**
    * Command the drive to traverse the given distance along this curvature. Should only issue one command (we may
