@@ -110,7 +110,9 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
   scan_time_ = time; 
 }
 
-void Navigation::addCarDimensionsAndSafetyMarginToVisMessage(amrl_msgs::VisualizationMsg &viz_msg) {
+void Navigation::addCarDimensionsAndSafetyMarginAtPosToVisMessage(
+        const std::pair<Eigen::Vector2f, double> &car_origin_loc, const uint32_t &car_color_loc,
+        const uint32_t &safety_color, amrl_msgs::VisualizationMsg &viz_msg) {
 
     // Draw the car
     Vector2f back_left_corner(-kAxleToRearDist, (-0.5 * w));
@@ -118,10 +120,10 @@ void Navigation::addCarDimensionsAndSafetyMarginToVisMessage(amrl_msgs::Visualiz
     Vector2f front_right_corner(kAxleToFrontDist, (0.5 * w));
     Vector2f back_right_corner(-kAxleToRearDist, (0.5 * w));
 
-    visualization::DrawLine(back_left_corner, front_left_corner, kCarBoundariesColor, viz_msg);
-    visualization::DrawLine(front_left_corner, front_right_corner, kCarBoundariesColor, viz_msg);
-    visualization::DrawLine(front_right_corner, back_right_corner, kCarBoundariesColor, viz_msg);
-    visualization::DrawLine(back_right_corner, back_left_corner, kCarBoundariesColor, viz_msg);
+    visualization::DrawLine(transformLocation(back_left_corner, car_origin_loc), transformLocation(front_left_corner, car_origin_loc), car_color_loc, viz_msg);
+    visualization::DrawLine(transformLocation(front_left_corner, car_origin_loc), transformLocation(front_right_corner, car_origin_loc), car_color_loc, viz_msg);
+    visualization::DrawLine(transformLocation(front_right_corner, car_origin_loc), transformLocation(back_right_corner, car_origin_loc), car_color_loc, viz_msg);
+    visualization::DrawLine(transformLocation(back_right_corner, car_origin_loc), transformLocation(back_left_corner, car_origin_loc), car_color_loc, viz_msg);
 
     // Draw the safety margin
     Vector2f safety_back_left_corner(back_left_corner.x() - m, back_left_corner.y() - m);
@@ -129,10 +131,49 @@ void Navigation::addCarDimensionsAndSafetyMarginToVisMessage(amrl_msgs::Visualiz
     Vector2f safety_front_right_corner(front_right_corner.x() + m, front_right_corner.y() + m);
     Vector2f safety_back_right_corner(back_right_corner.x() - m, back_right_corner.y() + m);
 
-    visualization::DrawLine(safety_back_left_corner, safety_front_left_corner, kCarSafetyMarginColor, viz_msg);
-    visualization::DrawLine(safety_front_left_corner, safety_front_right_corner, kCarSafetyMarginColor, viz_msg);
-    visualization::DrawLine(safety_front_right_corner, safety_back_right_corner, kCarSafetyMarginColor, viz_msg);
-    visualization::DrawLine(safety_back_right_corner, safety_back_left_corner, kCarSafetyMarginColor, viz_msg);
+    visualization::DrawLine(transformLocation(safety_back_left_corner, car_origin_loc), transformLocation(safety_front_left_corner, car_origin_loc), safety_color, viz_msg);
+    visualization::DrawLine(transformLocation(safety_front_left_corner, car_origin_loc), transformLocation(safety_front_right_corner, car_origin_loc), safety_color, viz_msg);
+    visualization::DrawLine(transformLocation(safety_front_right_corner, car_origin_loc), transformLocation(safety_back_right_corner, car_origin_loc), safety_color, viz_msg);
+    visualization::DrawLine(transformLocation(safety_back_right_corner, car_origin_loc), transformLocation(safety_back_left_corner, car_origin_loc), safety_color, viz_msg);
+}
+
+void Navigation::addCarDimensionsAndSafetyMarginToVisMessage(amrl_msgs::VisualizationMsg &viz_msg) {
+    addCarDimensionsAndSafetyMarginAtPosToVisMessage(std::make_pair(Vector2f(0.0, 0.0), 0.0), kCarBoundariesColor, kCarSafetyMarginColor, viz_msg);
+}
+
+Eigen::Vector2f Navigation::transformLocation(const Eigen::Vector2f &loc_to_transform,
+        const std::pair<Eigen::Vector2f, double> &transform_info) {
+    double angle = transform_info.second;
+    double x = transform_info.first.x() + cos(angle) * loc_to_transform.x() - sin(angle) * loc_to_transform.y();
+    double y = transform_info.first.y() + sin(angle) * loc_to_transform.x() + cos(angle) * loc_to_transform.y();
+
+    return Vector2f(x, y);
+}
+
+void Navigation::drawCarPosAfterCurvesExecuted(
+        const std::unordered_map<double, std::pair<double, double>> &free_path_len_and_clearance_by_curvature) {
+    for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
+        std::pair<Vector2f, double> car_pos_after_path =
+                getLocationAfterCurvatureExecution(curvature_info.first, curvature_info.second.first);
+        addCarDimensionsAndSafetyMarginAtPosToVisMessage(car_pos_after_path, kPredictedCarBoundariesColor,
+                kPredictedCarSafteyMarginColor, local_viz_msg_);
+    }
+}
+
+std::pair<Eigen::Vector2f, double> Navigation::getLocationAfterCurvatureExecution(const double &curvature, const double &path_len) {
+    if (curvature == 0.0) {
+        return std::make_pair(Vector2f(path_len, 0), 0);
+    }
+
+    double path_arc_angle = abs(path_len * curvature); // equivalent to path_len / radius
+    double radius = abs(1 / curvature);
+    double x = sin(path_arc_angle) * radius;
+    double y = radius - (cos(path_arc_angle) * radius);
+    if (curvature < 0) {
+        y = -y;
+        path_arc_angle = -path_arc_angle;
+    }
+    return std::make_pair(Vector2f(x, y), path_arc_angle);
 }
 
 double Navigation::computeDecelDistance(const double &velocity_to_decelerate_from) {
@@ -448,6 +489,7 @@ void Navigation::Run() {
     }
   }
 
+  drawCarPosAfterCurvesExecuted(free_path_len_and_clearance_by_curvature);
   // Add the best curvature last so it is highlighted in the visualization
   double best_curvature = curvature_and_dist_to_execute.first;
   std::pair<double, double> best_curvature_info = free_path_len_and_clearance_by_curvature[best_curvature];

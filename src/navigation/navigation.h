@@ -201,6 +201,16 @@ class Navigation {
   const uint32_t kCarSafetyMarginColor = 0x34eb4c;
 
   /**
+   * Color for drawing the predicted car boundaries (car boundaries after executing a path).
+   */
+  const uint32_t kPredictedCarBoundariesColor = 0xeb34d2;
+
+  /**
+   * Color for drawing the predicted car boundaries with the safety margin (after executing a path).
+   */
+  const uint32_t kPredictedCarSafteyMarginColor = 0xeb3443;
+
+  /**
    * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
    * least recent command last.
    */
@@ -273,9 +283,55 @@ class Navigation {
   double open_free_path_len_threshold_;
 
   /**
+   * Get the position of the base_link of the car relative to the current base_link position after executing the curvature for the given path length.
+   *
+   * @param curvature   Curvature
+   * @param path_len    Path length
+   *
+   * @return Position relative to current position of the car after executing the command for curvature along the given path length.
+   */
+  std::pair<Eigen::Vector2f, double> getLocationAfterCurvatureExecution(const double &curvature, const double &path_len);
+
+  /**
+   * Transform the given location.
+   *
+   * Input location is in coordinate frame A. Transform gives the position of coordinate frame A in the desired output
+   * frame.
+   *
+   * @param loc_to_transform    Location to transform.
+   * @param transform_info      Location and angular offset of frame of the location to transform in the desired output
+   *                            coordinate frame.
+   *
+   * @return Location in the output coordinate frame.
+   */
+  Eigen::Vector2f transformLocation(const Eigen::Vector2f &loc_to_transform,
+      const std::pair<Eigen::Vector2f, double> &transform_info);
+
+  /**
+   * Draw the car's position at the end points of each of the given paths.
+   *
+   * @param free_path_len_and_clearance_by_curvature    Free path length and clearance (in that order) by the curvature
+   *                                                    that they correspond to.
+   */
+  void drawCarPosAfterCurvesExecuted(
+          const std::unordered_map<double, std::pair<double, double>> &free_path_len_and_clearance_by_curvature);
+
+  /**
+   * Add display of the car dimensions assuming the origin of the car is at the given location to the visualization
+   * message.
+   *
+   * @param car_origin_loc[in]  Location of the origin of the car.
+   * @param car_color_loc[in]   Color to display the car boundaries in.
+   * @param safety_color[in]    Color to display the safety margin boundaries in.
+   * @param viz_msg[out]     Visualization message that should be updated with the car display
+   */
+  void addCarDimensionsAndSafetyMarginAtPosToVisMessage(const std::pair<Eigen::Vector2f, double> &car_origin_loc,
+      const uint32_t &car_color_loc, const uint32_t &safety_color, amrl_msgs::VisualizationMsg &viz_msg);
+
+  /**
    * Add components to the visualization message for seeing the car size and car+safety margin size.
    *
-   * @param viz_msg[in/out] Visualization message to update. Should be the local viz msg.
+   * @param viz_msg[out] Visualization message to update. Should be the local viz msg.
    */
   void addCarDimensionsAndSafetyMarginToVisMessage(amrl_msgs::VisualizationMsg &viz_msg);
 
