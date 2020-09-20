@@ -319,8 +319,8 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     // Center of rotation
     Eigen::Vector2f IC;
     // To search in part of point cloud
-    const int startIndex = 184; // -90 Degrees  
-    const int endIndex = 896;   // +90 Degrees
+    const int startIndex = 60; // -90 Degrees wrt base   
+    const int endIndex = 1020;   // +90 Degrees wrt base
     // TODO: Probably make this a ROS Param Later as needed.
     const double kClearanceOffset = 0.1; 
     std::vector<double> notHitting_r;
@@ -330,6 +330,7 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     std::vector<double> notHitting_alpha;
     // Initializing freePathalpha at pi radians
     double freePathalpha = 3.14;
+    float hittingSign = abs(curvature)/curvature; 
     
     if (abs(curvature) > 0) {
         IC.x() = 0.0;
@@ -339,8 +340,9 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
         // Set the free path length to the the circumference of the circle around the center of turning (max)
         free_path_len = 2.0 * M_PI * r;
         r_min = r - kLengthFromBaseToSafetySide;
+	float r_min_square = std::pow(r_min, 2);
         r_max = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r+ kLengthFromBaseToSafetySide, 2) , 0.5);
-        r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5);
+	r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5);
     
         // Converting cloud to polar
         for(int i=startIndex; i<=endIndex; i++) {
@@ -353,14 +355,14 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 
                 // Side Hit
                 if (r_p < r_fc){
-                    float x = std::pow(r_p_square - std::pow(r - kLengthFromBaseToSafetySide,2) , 0.5);
-                    pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y()- kLengthFromBaseToSafetySide, 2);
+                    float x = std::pow(r_p_square - r_min_square, 0.5);
+		    pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y() - kLengthFromBaseToSafetySide*hittingSign, 2);
                 }
 
                 // Front Hit
                 if ( r_p >= r_fc) {
-                    float y = r - std::pow(r_p_square - std::pow(kLengthFromAxleToSafetyFront ,2) ,0.5);
-                    pp_hit = std::pow(cloud_[i].x()- kLengthFromAxleToSafetyFront , 2) + std::pow(cloud_[i].y()-y , 2);
+                    float y = hittingSign*(r - std::pow(r_p_square - std::pow(kLengthFromAxleToSafetyFront, 2) ,0.5)) ;
+                    pp_hit = std::pow(cloud_[i].x()- kLengthFromAxleToSafetyFront, 2) + std::pow(cloud_[i].y()-y, 2);
                 }
 
                 theta =  acos(1 - pp_hit/(2*r_p_square));
@@ -480,7 +482,7 @@ void Navigation::Run() {
 
   std::pair<double, double> curvature_and_dist_to_execute =
           chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
-  executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
+executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
 
   for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
     if (curvature_info.first != curvature_and_dist_to_execute.first) {
