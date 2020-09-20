@@ -155,8 +155,15 @@ void Navigation::drawCarPosAfterCurvesExecuted(
     for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
         std::pair<Vector2f, double> car_pos_after_path =
                 getLocationAfterCurvatureExecution(curvature_info.first, curvature_info.second.first);
-        addCarDimensionsAndSafetyMarginAtPosToVisMessage(car_pos_after_path, kPredictedCarBoundariesColor,
-                kPredictedCarSafteyMarginColor, local_viz_msg_);
+
+        uint32_t car_color = kPredictedCarBoundariesColor;
+        uint32_t safety_color = kPredictedCarSafetyMarginColor;
+        if (isPathReasonablyOpen(curvature_info.second.first, curvature_info.second.second)) {
+            car_color = kPredictedOpenPathCarBoundariesColor;
+            safety_color = kPredictedOpenPathSafetyMarginColor;
+        }
+        addCarDimensionsAndSafetyMarginAtPosToVisMessage(car_pos_after_path, car_color,
+                safety_color, local_viz_msg_);
     }
 }
 
@@ -228,6 +235,7 @@ std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
 
     double best_curvature;
     if (reasonably_open_curvatures.empty()) {
+        ROS_INFO("No reasonably open paths");
 
         // If there are no reasonably open curvatures, use the fallback weighing function to weigh between the free
         // path length and other considerations (proximity to goal, clearance)
@@ -256,6 +264,13 @@ std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
                     curvature_and_obstacle_limitations_map.at(best_curvature).first));
 }
 
+bool Navigation::isPathReasonablyOpen(const double &free_path_len, const double &clearance) {
+    if ((free_path_len >= open_free_path_len_threshold_) && (clearance >= open_clearance_threshold_)) {
+        return true;
+    }
+    return false;
+}
+
 std::vector<double> Navigation::getCurvaturesWithReasonablyOpenPaths(
         std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map) {
     std::vector<double> reasonably_open_curvatures;
@@ -264,7 +279,7 @@ std::vector<double> Navigation::getCurvaturesWithReasonablyOpenPaths(
         double distance = curvature_info.second.first;
         double clearance = curvature_info.second.second;
 
-        if ((distance >= open_free_path_len_threshold_) && (clearance >= open_clearance_threshold_)) {
+        if (isPathReasonablyOpen(distance, clearance)) {
             reasonably_open_curvatures.emplace_back(curvature);
         }
     }
@@ -430,10 +445,9 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
     double compensation_distance = kLoopExecutionDelay * compensation_velocity_sum;
     double distance_remaining = std::max(0.0, distance - compensation_distance);
 
-    ROS_INFO_STREAM("Dist, dist after compensation " << distance << ", " << distance_remaining);
     double current_velocity = recent_executed_commands[0].velocity;
     if (distance_remaining > kStopDist) {
-	    ROS_INFO_STREAM("Compute Decel Distance " << computeDecelDistance(current_velocity));
+
         // Implementing 1-D TOC on an arbitrary arc, the parameters to be considered are new_distances and curvature
         if (computeDecelDistance(current_velocity) >= distance_remaining) {
             // Decelerate

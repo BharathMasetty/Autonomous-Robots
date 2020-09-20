@@ -142,19 +142,19 @@ class Navigation {
    * Default value for the additional length on top of the approximated stopping distance that a path must have to be
    * considered a reasonably open path. See open_free_path_len_threshold_.
    */
-  const double kDefaultFreePathBufferLenThreshold = 1.5;
+  const double kDefaultFreePathBufferLenThreshold = 2;
 
   /**
    * Default weight that clearance should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_clearance_weight_.
    */
-  const double kDefaultClearanceWeight = 0.1;
+  const double kDefaultClearanceWeight = 0.3;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
-  const double kDefaultCurvatureWeight = -0.3;
+  const double kDefaultCurvatureWeight = -0.05;
 
   /**
    * ROS parameter name for setting the clearance weight for the path scoring function.
@@ -201,14 +201,26 @@ class Navigation {
   const uint32_t kCarSafetyMarginColor = 0x34eb4c;
 
   /**
-   * Color for drawing the predicted car boundaries (car boundaries after executing a path).
+   * Color for drawing the predicted car boundaries (car boundaries after executing a path) when the path is not
+   * reasonably open.
    */
   const uint32_t kPredictedCarBoundariesColor = 0xeb34d2;
 
   /**
-   * Color for drawing the predicted car boundaries with the safety margin (after executing a path).
+   * Color for drawing the predicted car boundaries with the safety margin (after executing a path), when the path is
+   * not reasonably open.
    */
-  const uint32_t kPredictedCarSafteyMarginColor = 0xeb3443;
+  const uint32_t kPredictedCarSafetyMarginColor = 0xeb3443;
+
+  /**
+   * Color for drawing the predicted car boundaries when the path is reasonably open.
+   */
+  const uint32_t kPredictedOpenPathCarBoundariesColor = 0xecf542;
+
+  /**
+   * Color for drawing the predicted safety margin boundaries when the path is reasonably open.
+   */
+  const uint32_t kPredictedOpenPathSafetyMarginColor = 0x84f542;
 
   /**
    * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
@@ -315,6 +327,16 @@ class Navigation {
    */
   void drawCarPosAfterCurvesExecuted(
           const std::unordered_map<double, std::pair<double, double>> &free_path_len_and_clearance_by_curvature);
+
+  /**
+   * Check if the path with the given clearance and free path length is reasonably open.
+   *
+   * @param free_path_len   Free path length.
+   * @param clearance       Clearance of the path.
+   *
+   * @return True if the path is reasonably open, false if not.
+   */
+  bool isPathReasonablyOpen(const double &free_path_len, const double &clearance);
 
   /**
    * Add display of the car dimensions assuming the origin of the car is at the given location to the visualization
