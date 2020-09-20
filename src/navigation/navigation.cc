@@ -444,7 +444,8 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
 
     double compensation_distance = kLoopExecutionDelay * compensation_velocity_sum;
     double distance_remaining = std::max(0.0, distance - compensation_distance);
-
+    
+    // Bharath - Modifying this for now
     double current_velocity = recent_executed_commands[0].velocity;
     if (distance_remaining > kStopDist) {
 
@@ -476,6 +477,32 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
     recent_executed_commands[0] = drive_msg;
 }
 
+void Navigation::transformCloudForHighSpeeds(std::vector<Eigen::Vector2f> &pointCloud, std::vector<amrl_msgs::AckermannCurvatureDriveMsg> &pastCommands){
+
+   double angle;
+   double displacement;
+    for (unsigned int i=0; i<= pastCommands.size(); i++){
+   	double curvature = pastCommands[i].curvature;
+	double velocity = pastCommands[i].velocity;
+	if(abs(curvature)>0){
+		angle = -1.0*curvature*velocity*kLoopExecutionDelay;
+		displacement = -1.0*std::pow(2,0.5)*(1-cos(angle))/curvature;
+	}else{
+		angle = 0.0;
+		displacement = -1*velocity*kLoopExecutionDelay;
+	}
+	// transforming cloud
+	// create rotation 
+	Eigen::Rotation2Df r1(angle);
+	for (unsigned int j=0; j<= pointCloud.size(); j++){
+		pointCloud[j] = r1*pointCloud[j];
+		pointCloud[j].x() += displacement;
+		// Drawing predicted points
+		visualization::DrawPoint(pointCloud[j], kPredictedCloudPointsColor, local_viz_msg_);
+	}
+    }
+}
+
 void Navigation::Run() {
   visualization::ClearVisualizationMsg(local_viz_msg_);
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
@@ -490,6 +517,10 @@ void Navigation::Run() {
   }
  
   std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
+   
+  if (kMaxVel>1.0){
+  	transformCloudForHighSpeeds(cloud_, recent_executed_commands);
+  } 
 
   std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
           getFreePathLengthsAndClearances(curvatures_to_evaluate);

@@ -148,13 +148,13 @@ class Navigation {
    * Default weight that clearance should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_clearance_weight_.
    */
-  const double kDefaultClearanceWeight = 0.005;
+  const double kDefaultClearanceWeight = 0.5;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
-  const double kDefaultCurvatureWeight = -0.005;
+  const double kDefaultCurvatureWeight = 0.0;
 
   /**
    * ROS parameter name for setting the clearance weight for the path scoring function.
@@ -223,6 +223,11 @@ class Navigation {
   const uint32_t kPredictedOpenPathSafetyMarginColor = 0x84f542;
 
   /**
+   * Color for Drawing forward predicted cloud points
+   * */
+  const uint32_t kPredictedCloudPointsColor = 0x34b4eb;
+
+  /**
    * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
    * least recent command last.
    */
@@ -250,7 +255,7 @@ class Navigation {
   const float b = 0.324;
   const float l = 0.535;
   const float w = 0.281;
-  const float m = 0.2; // Choosing a safety margin of 20 cm to be conservative
+  const float m = 0.1; // Choosing a safety margin of 20 cm to be conservative
   const float kAxleToRearDist = 0.5 * (l - b);
   const float kAxleToFrontDist = l - kAxleToRearDist;
 
@@ -494,7 +499,17 @@ class Navigation {
    * @return Free path length along arc that will bring the car closest to the goal position without hitting obstacles.
    */
   double getFreePathLengthToClosestPointOfApproach(double goal_in_bl_frame_x, double curvature,
-                                                   double obstacle_free_path_len);
+   		  double obstacle_free_path_len);
+
+   /**
+    * Transforms the latest point cloud using the past commands 
+    *
+    * @param pointCloud: Recent point cloud data
+    * @param pastCommads: Vector having the commands from one actuation latancy ago
+    */
+   void transformCloudForHighSpeeds(std::vector<Eigen::Vector2f> &pointCloud, std::vector<amrl_msgs::AckermannCurvatureDriveMsg> &pastCommands);
+
+
 };
 
 }  // namespace navigation
