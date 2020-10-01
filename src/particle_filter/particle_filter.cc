@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <ros/ros.h>
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Geometry"
 #include "gflags/gflags.h"
@@ -52,10 +53,19 @@ namespace particle_filter {
 
 config_reader::ConfigReader config_reader_({"config/particle_filter.lua"});
 
-ParticleFilter::ParticleFilter() :
+ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     prev_odom_loc_(0, 0),
     prev_odom_angle_(0),
-    odom_initialized_(false) {}
+    odom_initialized_(false) {
+    n->param(kNumParticlesParamName, num_particles_, kDefaultNumParticles);
+    n->param(kInitialXStdDevParamName, initial_x_stddev_, kDefaultInitialXStdDev);
+    n->param(kInitialYStdDevParamName, initial_y_stddev_, kDefaultInitialYStdDev);
+    n->param(kInitialThetaStdDevParamName, initial_theta_stddev_, kDefaultInitialThetaStdDev);
+
+    ROS_INFO_STREAM("Number of particles: " << num_particles_);
+    ROS_INFO_STREAM("Std dev for initial pose x, y, and theta " << initial_x_stddev_ << ", " << initial_y_stddev_
+    << ", " << initial_theta_stddev_);
+}
 
 void ParticleFilter::GetParticles(vector<Particle>* particles) const {
   *particles = particles_;
@@ -174,6 +184,21 @@ void ParticleFilter::Initialize(const string& map_file,
   // The "set_pose" button on the GUI was clicked, or an initialization message
   // was received from the log. Initialize the particles accordingly, e.g. with
   // some distribution around the provided location and angle.
+
+  map_.Load("maps/" + map_file + ".txt");
+  odom_initialized_ = false;
+  particles_.clear();
+  for (int i = 0; i < num_particles_; i++) {
+      double weight = 1.0 / num_particles_;
+      Particle particle;
+      float x = rng_.Gaussian(loc.x(), initial_x_stddev_);
+      float y = rng_.Gaussian(loc.y(), initial_y_stddev_);
+      float noisy_angle = rng_.Gaussian(angle, initial_theta_stddev_);
+      particle.loc = {x, y};
+      particle.angle = math_util::AngleMod(noisy_angle);
+      particle.weight = weight;
+      particles_.emplace_back(particle);
+  }
 }
 
 void ParticleFilter::GetLocation(Eigen::Vector2f* loc_ptr, 
