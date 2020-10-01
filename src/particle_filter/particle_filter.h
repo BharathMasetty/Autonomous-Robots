@@ -42,7 +42,7 @@ struct Particle {
 class ParticleFilter {
  public:
   // Default Constructor.
-   ParticleFilter();
+  ParticleFilter(ros::NodeHandle* n);
 
   // Observe a new laser scan.
   void ObserveLaser(const std::vector<float>& ranges,
@@ -89,6 +89,47 @@ class ParticleFilter {
 
  private:
 
+  /**
+   * ROS parameter name for the number of particles.
+   */
+  const std::string kNumParticlesParamName = "num_particles";
+
+  /**
+   * ROS parameter name for the standard deviation to use when setting the x component of the initial set of particles.
+   */
+  const std::string kInitialXStdDevParamName = "initial_x_stddev";
+
+  /**
+   * ROS parameter name for the standard deviation to use when setting the y component of the initial set of particles.
+   */
+  const std::string kInitialYStdDevParamName = "initial_y_stddev";
+
+  /**
+   * ROS parameter name for the standard deviation to use when setting the theta component of the initial set of
+   * particles.
+   */
+  const std::string kInitialThetaStdDevParamName = "initial_theta_stddev";
+
+  /**
+   * Default number of particles.
+   */
+  const int kDefaultNumParticles = 100;
+
+  /**
+   * Default value for the standard deviation to use when setting the x component of the initial particles.
+   */
+  const double kDefaultInitialXStdDev = 1.0;
+
+  /**
+   * Default value for the standard deviation to use when setting the y component of the initial particles.
+   */
+  const double kDefaultInitialYStdDev = 1.0;
+
+  /**
+   * Default value for the standard deviation to use when setting the theta component of the initial particles.
+   */
+  const double kDefaultInitialThetaStdDev = 0.3;
+
   // List of particles being tracked.
   std::vector<Particle> particles_;
 
@@ -102,6 +143,26 @@ class ParticleFilter {
   Eigen::Vector2f prev_odom_loc_;
   float prev_odom_angle_;
   bool odom_initialized_;
+
+  /**
+   * Number of particles to use.
+   */
+  int num_particles_;
+
+  /**
+   * Standard deviation to use when setting the x component of the initial particles.
+   */
+  double initial_x_stddev_;
+
+  /**
+   * Standard deviation to use when setting the y component of the initial particles.
+   */
+  double initial_y_stddev_;
+
+  /**
+   * Standard deviation to use when setting the theta component of the initial particles.
+   */
+  double initial_theta_stddev_;
 };
 }  // namespace slam
 

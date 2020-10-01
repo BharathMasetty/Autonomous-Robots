@@ -84,7 +84,7 @@ CONFIG_FLOAT(init_r_, "init_r");
 config_reader::ConfigReader config_reader_({"config/particle_filter.lua"});
 
 bool run_ = true;
-particle_filter::ParticleFilter particle_filter_;
+particle_filter::ParticleFilter* particle_filter_ = nullptr;
 ros::Publisher visualization_publisher_;
 ros::Publisher localization_publisher_;
 ros::Publisher laser_publisher_;
@@ -103,7 +103,7 @@ void InitializeMsgs() {
 
 void PublishParticles() {
   vector<particle_filter::Particle> particles;
-  particle_filter_.GetParticles(&particles);
+  particle_filter_->GetParticles(&particles);
   for (const particle_filter::Particle& p : particles) {
     DrawParticle(p.loc, p.angle, vis_msg_);
   }
@@ -113,9 +113,9 @@ void PublishPredictedScan() {
   const uint32_t kColor = 0xd67d00;
   Vector2f robot_loc(0, 0);
   float robot_angle(0);
-  particle_filter_.GetLocation(&robot_loc, &robot_angle);
+  particle_filter_->GetLocation(&robot_loc, &robot_angle);
   vector<Vector2f> predicted_scan;
-  particle_filter_.GetPredictedPointCloud(
+  particle_filter_->GetPredictedPointCloud(
       robot_loc,
       robot_angle,
       last_laser_msg_.ranges.size(),
@@ -133,7 +133,7 @@ void PublishTrajectory() {
   const uint32_t kColor = 0xadadad;
   Vector2f robot_loc(0, 0);
   float robot_angle(0);
-  particle_filter_.GetLocation(&robot_loc, &robot_angle);
+  particle_filter_->GetLocation(&robot_loc, &robot_angle);
   static Vector2f last_loc_(0, 0);
   if (!trajectory_points_.empty() &&
       (last_loc_ - robot_loc).squaredNorm() > Sq(1.5)) {
@@ -173,7 +173,7 @@ void LaserCallback(const sensor_msgs::LaserScan& msg) {
     printf("Laser t=%f\n", msg.header.stamp.toSec());
   }
   last_laser_msg_ = msg;
-  particle_filter_.ObserveLaser(
+  particle_filter_->ObserveLaser(
       msg.ranges,
       msg.range_min,
       msg.range_max,
@@ -189,10 +189,10 @@ void OdometryCallback(const nav_msgs::Odometry& msg) {
   const Vector2f odom_loc(msg.pose.pose.position.x, msg.pose.pose.position.y);
   const float odom_angle =
       2.0 * atan2(msg.pose.pose.orientation.z, msg.pose.pose.orientation.w);
-  particle_filter_.ObserveOdometry(odom_loc, odom_angle);
+  particle_filter_->ObserveOdometry(odom_loc, odom_angle);
   Vector2f robot_loc(0, 0);
   float robot_angle(0);
-  particle_filter_.GetLocation(&robot_loc, &robot_angle);
+  particle_filter_->GetLocation(&robot_loc, &robot_angle);
   amrl_msgs::Localization2DMsg localization_msg;
   localization_msg.pose.x = robot_loc.x();
   localization_msg.pose.y = robot_loc.y();
@@ -210,7 +210,7 @@ void InitCallback(const amrl_msgs::Localization2DMsg& msg) {
          init_loc.x(),
          init_loc.y(),
          RadToDeg(init_angle));
-  particle_filter_.Initialize(map, init_loc, init_angle);
+  particle_filter_->Initialize(map, init_loc, init_angle);
   trajectory_points_.clear();
 }
 
@@ -249,6 +249,8 @@ int main(int argc, char** argv) {
   // Initialize ROS.
   ros::init(argc, argv, "particle_filter", ros::init_options::NoSigintHandler);
   ros::NodeHandle n;
+  particle_filter_ = new particle_filter::ParticleFilter(&n);
+
   InitializeMsgs();
   map_ = vector_map::VectorMap(CONFIG_map_name_);
 
@@ -261,5 +263,6 @@ int main(int argc, char** argv) {
 
   ProcessLive(&n);
 
+  delete particle_filter_;
   return 0;
 }
