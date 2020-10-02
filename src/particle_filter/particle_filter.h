@@ -111,6 +111,26 @@ class ParticleFilter {
   const std::string kInitialThetaStdDevParamName = "initial_theta_stddev";
 
   /**
+   * ROS parameter name for the first motion model parameter (used in standard deviation of rotation).
+   */
+  const std::string kMotionModelAlpha1ParamName = "motion_model_alpha_1";
+
+  /**
+   * ROS parameter name for the second motion model parameter (used in standard deviation of rotation).
+   */
+  const std::string kMotionModelAlpha2ParamName = "motion_model_alpha_2";
+
+  /**
+   * ROS parameter name for the third motion model parameter (used in standard deviation of translation).
+   */
+  const std::string kMotionModelAlpha3ParamName = "motion_model_alpha_3";
+
+  /**
+   * ROS parameter name for the fourth motion model parameter (used in standard deviation of translation).
+   */
+  const std::string kMotionModelAlpha4ParamName = "motion_model_alpha_4";
+
+  /**
    * Default number of particles.
    */
   const int kDefaultNumParticles = 100;
@@ -129,6 +149,26 @@ class ParticleFilter {
    * Default value for the standard deviation to use when setting the theta component of the initial particles.
    */
   const double kDefaultInitialThetaStdDev = 0.3;
+
+  /**
+   * Default value for the first motion model parameter (used in standard deviation of rotation).
+   */
+  const double kDefaultMotionModelAlpha1 = 0.1;
+
+  /**
+   * Default value for the second motion model parameter (used in standard deviation of rotation).
+   */
+  const double kDefaultMotionModelAlpha2 = 0.1;
+
+  /**
+   * Default value for the third motion model parameter (used in standard deviation of translation).
+   */
+  const double kDefaultMotionModelAlpha3 = 0.1;
+
+  /**
+   * Default value for the fourth motion model parameter (used in standard deviation of translation).
+   */
+  const double kDefaultMotionModelAlpha4 = 0.1;
 
   // List of particles being tracked.
   std::vector<Particle> particles_;
@@ -163,6 +203,26 @@ class ParticleFilter {
    * Standard deviation to use when setting the theta component of the initial particles.
    */
   double initial_theta_stddev_;
+
+  /**
+   * First motion model parameter (used in standard deviation of rotation).
+   */
+  double motion_model_alpha_1;
+
+  /**
+   * Second motion model parameter (used in standard deviation of rotation).
+   */
+  double motion_model_alpha_2;
+
+  /**
+   * Third motion model parameter (used in standard deviation of translation).
+   */
+  double motion_model_alpha_3;
+
+  /**
+   * Fourth motion model parameter (used in standard deviation of translation).
+   */
+  double motion_model_alpha_4;
 };
 }  // namespace slam
 

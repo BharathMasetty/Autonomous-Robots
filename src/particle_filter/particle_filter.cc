@@ -62,9 +62,16 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     n->param(kInitialYStdDevParamName, initial_y_stddev_, kDefaultInitialYStdDev);
     n->param(kInitialThetaStdDevParamName, initial_theta_stddev_, kDefaultInitialThetaStdDev);
 
+    n->param(kMotionModelAlpha1ParamName, motion_model_alpha_1, kDefaultMotionModelAlpha1);
+    n->param(kMotionModelAlpha2ParamName, motion_model_alpha_2, kDefaultMotionModelAlpha2);
+    n->param(kMotionModelAlpha3ParamName, motion_model_alpha_3, kDefaultMotionModelAlpha3);
+    n->param(kMotionModelAlpha4ParamName, motion_model_alpha_4, kDefaultMotionModelAlpha4);
+
     ROS_INFO_STREAM("Number of particles: " << num_particles_);
     ROS_INFO_STREAM("Std dev for initial pose x, y, and theta " << initial_x_stddev_ << ", " << initial_y_stddev_
-    << ", " << initial_theta_stddev_);
+            << ", " << initial_theta_stddev_);
+    ROS_INFO_STREAM("Motion model parameters (1-4): " << motion_model_alpha_1 << ", " << motion_model_alpha_2
+            << ", " << motion_model_alpha_3 << ", " << motion_model_alpha_4);
 }
 
 void ParticleFilter::GetParticles(vector<Particle>* particles) const {
@@ -169,13 +176,53 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
   // Implement the motion model predict step here, to propagate the particles
   // forward based on odometry.
 
+  if (odom_initialized_) {
+      // Implementing odometry based motion model found on pg. 136 of Probabilistic Robotics book
+      float prev_odom_x = prev_odom_loc_.x();
+      float curr_odom_x = odom_loc.x();
 
-  // You will need to use the Gaussian random number generator provided. For
-  // example, to generate a random number from a Gaussian with mean 0, and
-  // standard deviation 2:
-  float x = rng_.Gaussian(0.0, 2.0);
-  printf("Random number drawn from Gaussian distribution with 0 mean and "
-         "standard deviation of 2 : %f\n", x);
+      float prev_odom_y = prev_odom_loc_.y();
+      float curr_odom_y = odom_loc.y();
+
+      double delta_rot_1 = atan2(curr_odom_y - prev_odom_y, curr_odom_x - prev_odom_x) - prev_odom_angle_;
+      double delta_trans = (odom_loc - prev_odom_loc_).norm();
+      double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
+
+      for (uint32_t i = 0; i < particles_.size(); i++) {
+
+          // TODO ppts of this concept don't square delta_rot_1, delta_trans, or delta_rot_2. Should we?
+          double delta_rot_1_std_dev =
+                  sqrt((motion_model_alpha_1 * pow(delta_rot_1, 2)) + (motion_model_alpha_2 * pow(delta_trans, 2)));
+          double delta_trans_std_dev = sqrt((motion_model_alpha_3 * pow(delta_trans, 2)) +
+                  (motion_model_alpha_4 * (pow(delta_rot_1, 2) + pow(delta_rot_2, 2))));
+          double delta_rot_2_std_dev =
+                  sqrt((motion_model_alpha_1 * pow(delta_rot_2, 2)) + (motion_model_alpha_2 * pow(delta_trans, 2)));
+
+          double delta_rot_1_noise = rng_.Gaussian(0.0, sqrt(delta_rot_1_std_dev));
+          double delta_trans_noise = rng_.Gaussian(0.0, sqrt(delta_trans_std_dev));
+          double delta_rot_2_noise = rng_.Gaussian(0.0, sqrt(delta_rot_2_std_dev));
+
+          double delta_rot_1_hat = delta_rot_1 - delta_rot_1_noise;
+          double delta_trans_hat = delta_trans - delta_trans_noise;
+          double delta_rot_2_hat = delta_rot_2 - delta_rot_2_noise;
+
+          Particle curr_particle = particles_[i];
+          float curr_x = curr_particle.loc.x();
+          float curr_y = curr_particle.loc.y();
+          float curr_theta = curr_particle.angle;
+
+          float new_x = curr_x + (delta_trans_hat * cos(curr_theta + delta_rot_1_hat));
+          float new_y = curr_y + (delta_trans_hat * sin(curr_theta + delta_rot_1_hat));
+          float new_theta = curr_theta + delta_rot_1_hat + delta_rot_2_hat;
+
+          particles_[i].angle = math_util::AngleMod(new_theta);
+          particles_[i].loc = Vector2f(new_x, new_y);
+      }
+  }
+
+  prev_odom_angle_ = odom_angle;
+  prev_odom_loc_ = odom_loc;
+  odom_initialized_ = true;
 }
 
 void ParticleFilter::Initialize(const string& map_file,
