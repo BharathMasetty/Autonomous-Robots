@@ -78,14 +78,15 @@ class ParticleFilter {
   void Resample();
 
   // For debugging: get predicted point cloud from current location.
-  void GetPredictedPointCloud(const Eigen::Vector2f& loc,
-                              const float angle,
+  void GetPredictedPointCloud(Eigen::Vector2f loc,
+		  	      float angle,
                               int num_ranges,
                               float range_min,
                               float range_max,
                               float angle_min,
                               float angle_max,
-                              std::vector<Eigen::Vector2f>* scan);
+                              std::vector<Eigen::Vector2f>* scan,
+			      std::vector<float>* predRanges);
 
  private:
 
@@ -203,6 +204,26 @@ class ParticleFilter {
    * Standard deviation to use when setting the theta component of the initial particles.
    */
   double initial_theta_stddev_;
+
+  /*
+   *  Returns the best point of intersection along a given laser line.
+   */
+  std::pair<Eigen::Vector2f, float> GetIntersectionPoint(Eigen::Vector2f LidarLoc, float laserAngle, Eigen::Vector2f loc, float angle, float range_min, float range_max);
+
+  /*
+   * Traslation between Lidar and baseLink
+   */
+  const float kDisplacementFromBaseToLidar = 0.2;
+
+  /*
+   * Gamma: correlation parameter for observation model in update step
+   */
+  const double kGamma = 1; // TODO: make this a ros parameter
+  
+  /*
+   * standard deviation of the observation model
+   */
+  const float kLaserStdDev = 1.0; // TODO: Make this a ROS Parameter 
 
   /**
    * First motion model parameter (used in standard deviation of rotation).

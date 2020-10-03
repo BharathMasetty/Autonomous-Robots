@@ -78,55 +78,60 @@ void ParticleFilter::GetParticles(vector<Particle>* particles) const {
   *particles = particles_;
 }
 
-void ParticleFilter::GetPredictedPointCloud(const Vector2f& loc,
-                                            const float angle,
+std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(Vector2f LidarLoc, float laserAngle, Vector2f loc, float angle, float range_min, float range_max){
+
+	// Laser Line start and end wrt map frame
+	Vector2f startPoint(LidarLoc.x() + range_min*cos(laserAngle + angle), LidarLoc.y() + range_min*sin(laserAngle + angle));
+	Vector2f endPoint(LidarLoc.x() + range_max*cos(laserAngle + angle), LidarLoc.y() + range_max*sin(laserAngle + angle));
+
+	// Laser Line
+	line2f LaserLine(startPoint.x(), startPoint.y(), endPoint.x(), endPoint.y());
+	
+	// checking for intersection with map lines
+	float currBestRange = range_max;
+	Vector2f bestIntersection;
+	for (size_t i = 0; i < map_.lines.size(); ++i){
+		const line2f map_line = map_.lines[i];
+			bool intersects = map_line.Intersects(LaserLine);
+			if (intersects){
+				Vector2f intersectionPoint;
+			        intersects = map_line.Intersection(map_line, &intersectionPoint);
+				float curr_range = (intersectionPoint - LidarLoc).norm();
+				if (curr_range <= currBestRange){
+					currBestRange = curr_range;
+					bestIntersection = intersectionPoint;
+				}			
+			}
+	}
+	
+	return std::make_pair(bestIntersection, currBestRange);
+}
+
+void ParticleFilter::GetPredictedPointCloud(Vector2f loc,
+					    float angle,
                                             int num_ranges,
                                             float range_min,
                                             float range_max,
                                             float angle_min,
                                             float angle_max,
-                                            vector<Vector2f>* scan_ptr) {
+                                            vector<Vector2f>* scan_ptr,
+					    vector<float>* predRanges) {
+  // Lidar Location wrt Map Frame
+  Vector2f LidarLoc(loc.x() + kDisplacementFromBaseToLidar*cos(angle), loc.y() + kDisplacementFromBaseToLidar*sin(angle));
+  
   vector<Vector2f>& scan = *scan_ptr;
-  // Compute what the predicted point cloud would be, if the car was at the pose
-  // loc, angle, with the sensor characteristics defined by the provided
-  // parameters.
-  // This is NOT the motion model predict step: it is the prediction of the
-  // expected observations, to be used for the update step.
-
-  // Note: The returned values must be set using the `scan` variable:
+  vector<float>& pred_ranges = *predRanges;
   scan.resize(num_ranges);
-  // Fill in the entries of scan using array writes, e.g. scan[i] = ...
+  pred_ranges.resize(num_ranges);
+  const float angleIncrement = (angle_max - angle_min)/num_ranges;
+
+  // Predictions for each scan direction 
   for (size_t i = 0; i < scan.size(); ++i) {
-    scan[i] = Vector2f(0, 0);
-  }
-
-  // The line segments in the map are stored in the `map_.lines` variable. You
-  // can iterate through them as:
-  for (size_t i = 0; i < map_.lines.size(); ++i) {
-    const line2f map_line = map_.lines[i];
-    // The line2f class has helper functions that will be useful.
-    // You can create a new line segment instance as follows, for :
-    line2f my_line(1, 2, 3, 4); // Line segment from (1,2) to (3.4).
-    // Access the end points using `.p0` and `.p1` members:
-    printf("P0: %f, %f P1: %f,%f\n", 
-           my_line.p0.x(),
-           my_line.p0.y(),
-           my_line.p1.x(),
-           my_line.p1.y());
-
-    // Check for intersections:
-    bool intersects = map_line.Intersects(my_line);
-    // You can also simultaneously check for intersection, and return the point
-    // of intersection:
-    Vector2f intersection_point; // Return variable
-    intersects = map_line.Intersection(my_line, &intersection_point);
-    if (intersects) {
-      printf("Intersects at %f,%f\n", 
-             intersection_point.x(),
-             intersection_point.y());
-    } else {
-      printf("No intersection\n");
-    }
+	
+	float currLaserAngle = angle_min + i*angleIncrement; 	    
+	std::pair<Vector2f, float> cloudPointInfo = GetIntersectionPoint(LidarLoc, currLaserAngle, loc, angle, range_min, range_max);
+	scan[i] = cloudPointInfo.first;
+ 	pred_ranges[i] = cloudPointInfo.second; 
   }
 }
 
@@ -135,12 +140,21 @@ void ParticleFilter::Update(const vector<float>& ranges,
                             float range_max,
                             float angle_min,
                             float angle_max,
-                            Particle* p_ptr) {
-  // Implement the update step of the particle filter here.
-  // You will have to use the `GetPredictedPointCloud` to predict the expected
-  // observations for each particle, and assign weights to the particles based
-  // on the observation likelihood computed by relating the observation to the
-  // predicted point cloud.
+  			    Particle* p_ptr) {
+  
+  vector<Vector2f> predictedPointCloud;
+  vector<float> predictedRanges;
+  const int num_ranges = ranges.size();
+  GetPredictedPointCloud(p_ptr->loc, p_ptr->angle, num_ranges, range_min, range_max, angle_min, angle_max, &predictedPointCloud, &predictedRanges);
+
+  float squaredStdObs = std::pow(kLaserStdDev, 2);
+  // Updating the weight  
+  p_ptr->weight = 1.0;
+  for (int i = 0; i < num_ranges; i++){
+	  float squaredDiff = std::pow(ranges[i] - predictedRanges[i], 2);
+	  float currObservationProb = std::pow(1.0/std::exp(0.5*squaredDiff/squaredStdObs)  ,(double)1.0/kGamma);
+	  p_ptr->weight *= currObservationProb;
+  }
 }
 
 void ParticleFilter::Resample() {
@@ -166,8 +180,13 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
                                   float range_max,
                                   float angle_min,
                                   float angle_max) {
-  // A new laser scan observation is available (in the laser frame)
-  // Call the Update and Resample steps as necessary.
+
+	 for (int i=0; i<num_particles_; i++){
+	 	Particle* curr_particle = &particles_[i];
+		Update(ranges, range_min, range_max, angle_min, angle_max, curr_particle);		
+	 }
+	 std::cout<< "Update loop completed" << std::endl;
+
 }
 
 void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
