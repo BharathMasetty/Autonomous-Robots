@@ -57,10 +57,34 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     prev_odom_loc_(0, 0),
     prev_odom_angle_(0),
     odom_initialized_(false) {
+    
+    // Initialization Parameters	 	 
     n->param(kNumParticlesParamName, num_particles_, kDefaultNumParticles);
     n->param(kInitialXStdDevParamName, initial_x_stddev_, kDefaultInitialXStdDev);
     n->param(kInitialYStdDevParamName, initial_y_stddev_, kDefaultInitialYStdDev);
     n->param(kInitialThetaStdDevParamName, initial_theta_stddev_, kDefaultInitialThetaStdDev);
+    
+    // Motion model parameters 
+    n->param(kMotionModelAlpha1ParamName, motion_model_alpha_1, kDefaultMotionModelAlpha1);
+    n->param(kMotionModelAlpha2ParamName, motion_model_alpha_2, kDefaultMotionModelAlpha2);
+    n->param(kMotionModelAlpha3ParamName, motion_model_alpha_3, kDefaultMotionModelAlpha3);
+    n->param(kMotionModelAlpha4ParamName, motion_model_alpha_4, kDefaultMotionModelAlpha4);
+    
+    // Observation Model Parameters 
+    n->param(kObsGammaParamName, gamma_, kDefaultGamma);
+    n->param(kObsStdDevSquaredParamName, squared_laser_stddev_, kDefaultSquaredLaserStdDev);
+    n->param(kObsDshortParamName, d_short_, kDefaultDshort);
+    n->param(kObsDlongParamName, d_long_, kDefaultDlong);
+    n->param(kObsSminParamName, s_min_, kDefaultSmin);
+    n->param(kObsSmaxParamName, s_max_, kDefaultSmax);
+    n->param(kObsDParamName, obs_d_, kDefaultObsD);
+    n->param(kObsKParamName, obs_k_, kDefaultObsK);    
+
+    ROS_INFO_STREAM("Number of particles: " << num_particles_);
+    ROS_INFO_STREAM("Std dev for initial pose x, y, and theta " << initial_x_stddev_ << ", " << initial_y_stddev_
+            << ", " << initial_theta_stddev_);
+    ROS_INFO_STREAM("Motion model parameters (1-4): " << motion_model_alpha_1 << ", " << motion_model_alpha_2
+            << ", " << motion_model_alpha_3 << ", " << motion_model_alpha_4);
 
     n->param(kMotionModelAlpha1ParamName, motion_model_alpha_1, kDefaultMotionModelAlpha1);
     n->param(kMotionModelAlpha2ParamName, motion_model_alpha_2, kDefaultMotionModelAlpha2);
@@ -78,7 +102,11 @@ void ParticleFilter::GetParticles(vector<Particle>* particles) const {
   *particles = particles_;
 }
 
-std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(Vector2f LidarLoc, float laserAngle, Vector2f loc, float angle, float range_min, float range_max){
+std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(const Vector2f LidarLoc, 
+								       const float laserAngle, 
+								       const float angle, 
+								       float range_min, 
+								       float range_max){
 
 	// Laser Line start and end wrt map frame
 	Vector2f startPoint(LidarLoc.x() + range_min*cos(laserAngle + angle), LidarLoc.y() + range_min*sin(laserAngle + angle));
@@ -89,13 +117,12 @@ std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(Vector2f 
 	
 	// checking for intersection with map lines
 	float currBestRange = range_max;
-	Vector2f bestIntersection;
+	Vector2f bestIntersection = endPoint;
 	for (size_t i = 0; i < map_.lines.size(); ++i){
 		const line2f map_line = map_.lines[i];
-			bool intersects = map_line.Intersects(LaserLine);
+			Vector2f intersectionPoint;
+			bool intersects = map_line.Intersection(LaserLine, &intersectionPoint);
 			if (intersects){
-				Vector2f intersectionPoint;
-			        intersects = map_line.Intersection(map_line, &intersectionPoint);
 				float curr_range = (intersectionPoint - LidarLoc).norm();
 				if (curr_range <= currBestRange){
 					currBestRange = curr_range;
@@ -103,35 +130,34 @@ std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(Vector2f 
 				}			
 			}
 	}
-	
+  	 
 	return std::make_pair(bestIntersection, currBestRange);
 }
 
-void ParticleFilter::GetPredictedPointCloud(Vector2f loc,
-					    float angle,
+void ParticleFilter::GetPredictedPointCloud(const Vector2f& loc,
+					    const float angle,
                                             int num_ranges,
                                             float range_min,
                                             float range_max,
                                             float angle_min,
                                             float angle_max,
                                             vector<Vector2f>* scan_ptr,
-					    vector<float>* predRanges) {
+					    vector<float>* ranges_ptr) {
   // Lidar Location wrt Map Frame
   Vector2f LidarLoc(loc.x() + kDisplacementFromBaseToLidar*cos(angle), loc.y() + kDisplacementFromBaseToLidar*sin(angle));
   
   vector<Vector2f>& scan = *scan_ptr;
-  vector<float>& pred_ranges = *predRanges;
+  vector<float>& ranges = *ranges_ptr;
   scan.resize(num_ranges);
-  pred_ranges.resize(num_ranges);
-  const float angleIncrement = (angle_max - angle_min)/num_ranges;
-
+  ranges.resize(num_ranges);
+  const float angleIncrement = (angle_max - angle_min)/(num_ranges-1);
   // Predictions for each scan direction 
-  for (size_t i = 0; i < scan.size(); ++i) {
+  for (int i=0; i< num_ranges; i++) {
 	
 	float currLaserAngle = angle_min + i*angleIncrement; 	    
-	std::pair<Vector2f, float> cloudPointInfo = GetIntersectionPoint(LidarLoc, currLaserAngle, loc, angle, range_min, range_max);
+	std::pair<Vector2f, float> cloudPointInfo = GetIntersectionPoint(LidarLoc, currLaserAngle, angle, range_min, range_max);
 	scan[i] = cloudPointInfo.first;
- 	pred_ranges[i] = cloudPointInfo.second; 
+ 	ranges[i] = cloudPointInfo.second; 
   }
 }
 
@@ -142,19 +168,42 @@ void ParticleFilter::Update(const vector<float>& ranges,
                             float angle_max,
   			    Particle* p_ptr) {
   
+  Particle& p = *p_ptr; 
   vector<Vector2f> predictedPointCloud;
   vector<float> predictedRanges;
   const int num_ranges = ranges.size();
-  GetPredictedPointCloud(p_ptr->loc, p_ptr->angle, num_ranges, range_min, range_max, angle_min, angle_max, &predictedPointCloud, &predictedRanges);
-
-  float squaredStdObs = std::pow(kLaserStdDev, 2);
-  // Updating the weight  
-  p_ptr->weight = 1.0;
+  GetPredictedPointCloud(p.loc, p.angle, num_ranges, range_min, range_max, angle_min, angle_max, &predictedPointCloud, &predictedRanges);
+  // Updating the weight 
+  p.weight = 1.0;
   for (int i = 0; i < num_ranges; i++){
-	  float squaredDiff = std::pow(ranges[i] - predictedRanges[i], 2);
-	  float currObservationProb = std::pow(1.0/std::exp(0.5*squaredDiff/squaredStdObs)  ,(double)1.0/kGamma);
-	  p_ptr->weight *= currObservationProb;
+	  //std::cout << "RangeNum: " << i << " pred range " << predictedRanges[i] << " actual range " << ranges[i] << std::endl;  
+	  float diff = predictedRanges[i] - ranges[i];
+	  float squaredDiff = std::pow(diff, 2);
+	  float currObservationProb; 
+	  
+	  // Simple Observation Model
+	  currObservationProb = std::exp(-0.5*squaredDiff/squared_laser_stddev_);
+  	 
+	  /* Robust Model here --- Switch to this if needed
+	   * NOTE: This might need more tuning  efforst becasue of 4 extra parameters
+	  if(diff < -s_min_ || diff > s_max_){
+	  	currObservationProb = 0;
+	  }else if(diff < -d_short_){
+	  	currObservationProb = d_short_prob_;
+	  }
+	  else if(diff > d_long_){
+	  	currObservationProb = d_long_prob_;
+	  }
+	  else {
+	  	currObservationProb = std::exp(-0.5*squaredDiff/squared_laser_stddev_);
+	  }
+	  */
+	  
+	  p.weight *= currObservationProb;
+
   }
+  // accounting for correlation in the joint probability
+  p.weight = std::pow(p.weight, (double)1.0/gamma_);
 }
 
 void ParticleFilter::Resample() {
@@ -180,13 +229,20 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
                                   float range_max,
                                   float angle_min,
                                   float angle_max) {
-
-	 for (int i=0; i<num_particles_; i++){
-	 	Particle* curr_particle = &particles_[i];
-		Update(ranges, range_min, range_max, angle_min, angle_max, curr_particle);		
-	 }
-	 std::cout<< "Update loop completed" << std::endl;
-
+	
+	 
+	 double particleWeightSum = 0;
+	 for (uint i=0; i<particles_.size(); i++){
+		Update(ranges, range_min, range_max, angle_min, angle_max, &particles_[i]);		
+   		particleWeightSum += particles_[i].weight;
+		}	
+		
+	 // Normalize weights
+	for (uint i=0; i<particles_.size(); i++){
+                particles_[i].weight = particles_[i].weight/particleWeightSum;
+		std::cout << particles_[i].weight << " " ;
+	}
+	std::cout << std::endl;	
 }
 
 void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
@@ -274,9 +330,24 @@ void ParticleFilter::GetLocation(Eigen::Vector2f* loc_ptr,
   // Compute the best estimate of the robot's location based on the current set
   // of particles. The computed values must be set to the `loc` and `angle`
   // variables to return them. Modify the following assignments:
-  loc = Vector2f(0, 0);
-  angle = 0;
-}
+  
+  // Default location when there are no particles
+  if(particles_.empty()){
+  	loc = Vector2f(0,0);
+  	angle = 0;
+  	return;
+  }
 
-
+  //Getting the particle with highest weight
+  double bestWeight = -1.0;
+  uint bestParticleIndex=0;
+  for(uint i =0; i<particles_.size();i++){
+  	if(particles_[i].weight >= bestWeight){
+		bestWeight = particles_[i].weight;
+		bestParticleIndex = i;
+	}
+  }
+  loc = particles_[bestParticleIndex].loc;
+  angle = particles_[bestParticleIndex].angle;
+  }
 }  // namespace particle_filter
