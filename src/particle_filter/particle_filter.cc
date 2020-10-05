@@ -209,22 +209,32 @@ void ParticleFilter::Update(const vector<float>& ranges,
 }
 
 void ParticleFilter::Resample(const std::vector<double>& normWeightProbs) {
-  // Resample the particles, proportional to their weights.
-  // The current particles are in the `particles_` variable. 
-  // Create a variable to store the new particles, and when done, replace the
-  // old set of particles:
-  // vector<Particle> new_particles';
-  // During resampling: 
-  //    new_particles.push_back(...)
-  // After resampling:
-  // particles_ = new_particles;
-
-  // You will need to use the uniform random number generator provided. For
-  // example, to generate a random number between 0 and 1:
-  float x = rng_.UniformRandom(0, 1);
-  printf("Random number drawn from uniform distribution between 0 and 1: %f\n",
-         x);
+  // Initialize the D for calculating range
+  double particles_weight_new[particles_.size()] = {};   //creating an empty array for calculating Weight*D
+  std::vector<Particle> new_particles = {};                 //initialising a vector for particles
+  double prev_particle_range_upper_bound = 0;
+  for (uint i=0; i < particles_.size();i++){
+      //particles_weight_new[i] = particles_[i].weight + prev_particle_range_upper_bound;
+      particles_weight_new[i] = normWeightProbs[i] + prev_particle_range_upper_bound;
+      prev_particle_range_upper_bound = particles_weight_new[i];
+      }
+  //this loop will run for the given number of particles for resampling with unweighing
+  for (uint i =0; i<particles_.size(); i++) {
+      float x = rng_.UniformRandom(0, 1);               //uniform random number generator
+      for (uint i = 0; i < particles_.size(); i++) {
+          if (x < particles_weight_new[i]) {
+              new_particles.push_back(particles_[i]);
+              break;
+          }
+      }
+  }
+  particles_ = new_particles;
+  //initialize all particle weights to be 1/N
+  for (uint i = 0; i<particles_.size(); i++){
+      particles_[i].weight = log(1/num_particles_);
+  }
 }
+
 
 void ParticleFilter::ObserveLaser(const vector<float>& ranges,
                                   float range_min,
