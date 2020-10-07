@@ -96,6 +96,9 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
             << ", " << initial_theta_stddev_);
     ROS_INFO_STREAM("Motion model parameters (1-4): " << motion_model_alpha_1 << ", " << motion_model_alpha_2
             << ", " << motion_model_alpha_3 << ", " << motion_model_alpha_4);
+    ROS_INFO_STREAM("Observation Model Parameters: gamma: " << gamma_ << " square stddev-obs liklihood: " << squared_laser_stddev_);
+    ROS_INFO_STREAM("Distance Between two update calls : " << obs_d_);
+    ROS_INFO_STREAM("Updates between two resample calls: "<< obs_k_);
 }
 
 void ParticleFilter::GetParticles(vector<Particle>* particles) const {
@@ -173,40 +176,39 @@ void ParticleFilter::Update(const vector<float>& ranges,
   vector<float> predictedRanges;
   const int num_ranges = ranges.size();
   GetPredictedPointCloud(p.loc, p.angle, num_ranges, range_min, range_max, angle_min, angle_max, &predictedPointCloud, &predictedRanges);
-  // Updating the weight 
-  p.weight = 1.0;
+  
+  float currObservationLogProb = 0; 
   for (int i = 0; i < num_ranges; i++){
 	  //std::cout << "RangeNum: " << i << " pred range " << predictedRanges[i] << " actual range " << ranges[i] << std::endl;  
 	  float diff = predictedRanges[i] - ranges[i];
 	  float squaredDiff = std::pow(diff, 2);
-	  float currObservationProb; 
+	  float currObservationLogProb; 
 	  
 	  // Simple Observation Model
-	  currObservationProb = std::exp(-0.5*squaredDiff/squared_laser_stddev_);
-  	 
-	  /* Robust Model here --- Switch to this if needed
-	   * NOTE: This might need more tuning  efforst becasue of 4 extra parameters
+	  currObservationLogProb += -squaredDiff/squared_laser_stddev_;
+  		
+	 /* 
+	  // Robust Model here --- Switch to this if needed
+	  // NOTE: This might need more tuning  efforst becasue of 4 extra parameters
 	  if(diff < -s_min_ || diff > s_max_){
-	  	currObservationProb = 0;
+	  	currObservationLogProb += -std::numeric_limits<double>::infinity();
 	  }else if(diff < -d_short_){
-	  	currObservationProb = d_short_prob_;
+	  	currObservationLogProb += d_short_log_prob_;
 	  }
 	  else if(diff > d_long_){
-	  	currObservationProb = d_long_prob_;
+	  	currObservationLogProb += d_long_log_prob_;
 	  }
 	  else {
-	  	currObservationProb = std::exp(-0.5*squaredDiff/squared_laser_stddev_);
-	  }
-	  */
+	  	currObservationLogProb += -squaredDiff/squared_laser_stddev_;
+	  }*/
 	  
-	  p.weight *= currObservationProb;
-
   }
+  
   // accounting for correlation in the joint probability
-  p.weight = std::pow(p.weight, (double)1.0/gamma_);
+  p.weight += gamma_*currObservationLogProb;
 }
 
-void ParticleFilter::Resample() {
+void ParticleFilter::Resample(const std::vector<double>& normWeightProbs) {
   // Resample the particles, proportional to their weights.
   // The current particles are in the `particles_` variable. 
   // Create a variable to store the new particles, and when done, replace the
@@ -230,19 +232,54 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
                                   float angle_min,
                                   float angle_max) {
 	
+	 /*
+	  * 1) Check if the car as traveled some distance
+	  * 2) Update if needed
+	  * 3) Check resampling 
+	  * 4) Resample if needed  -- This resets the particle weights
+	  */
+	
+	 // This should always be false and only set true when enters resampling
+	 justResampled_ = false;
+	 int bestParticleIndex = 0;
+  	 double bestWeight = -std::numeric_limits<double>::infinity();
 	 
-	 double particleWeightSum = 0;
-	 for (uint i=0; i<particles_.size(); i++){
-		Update(ranges, range_min, range_max, angle_min, angle_max, &particles_[i]);		
-   		particleWeightSum += particles_[i].weight;
-		}	
+	 // Checking if we want to update or not
+	 if (dispFromLastUpdate_ >= obs_d_){
+		 
+		 dispFromLastUpdate_ = 0;
+		 for (uint i=0; i<particles_.size(); i++){
+                	Update(ranges, range_min, range_max, angle_min, angle_max, &particles_[i]);
+                	if(particles_[i].weight >= bestWeight){
+				bestWeight = particles_[i].weight;
+				bestParticleIndex = i;
+			}
+                }
+		lastUpdateBestParticleIndex_ = bestParticleIndex;
 		
-	 // Normalize weights
-	for (uint i=0; i<particles_.size(); i++){
-                particles_[i].weight = particles_[i].weight/particleWeightSum;
-		std::cout << particles_[i].weight << " " ;
-	}
-	std::cout << std::endl;	
+		// Counter for updates done without resampling
+		numUpdatesFromLastResample_ += 1;
+
+		// Checking of we want to resample of not
+		if (numUpdatesFromLastResample_ >= obs_k_){
+			
+			//Normalize Log probs
+			std::vector<double> normalizedProbWeights;
+			double bestWeightProb = std::exp(particles_[bestParticleIndex].weight);
+			for (uint i=0; i<= particles_.size(); i++){
+				double prob = std::exp(particles_[i].weight);
+				normalizedProbWeights.push_back(prob/bestWeightProb);
+			}
+
+			//Resample
+			Resample(normalizedProbWeights);
+			justResampled_ = true;
+			numUpdatesFromLastResample_ = 0;
+
+		}
+	 
+	 }
+
 }
 
 void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
@@ -252,6 +289,7 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
   // forward based on odometry.
 
   if (odom_initialized_) {
+
       // Implementing odometry based motion model found on pg. 136 of Probabilistic Robotics book
       float prev_odom_x = prev_odom_loc_.x();
       float curr_odom_x = odom_loc.x();
@@ -262,6 +300,9 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
       double delta_rot_1 = atan2(curr_odom_y - prev_odom_y, curr_odom_x - prev_odom_x) - prev_odom_angle_;
       double delta_trans = (odom_loc - prev_odom_loc_).norm();
       double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
+	
+      // Keeping track of distance travelled since last update call
+      dispFromLastUpdate_ += delta_trans;
 
       for (uint32_t i = 0; i < particles_.size(); i++) {
 
@@ -309,9 +350,10 @@ void ParticleFilter::Initialize(const string& map_file,
 
   map_.Load("maps/" + map_file + ".txt");
   odom_initialized_ = false;
+  dispFromLastUpdate_ = 0;
   particles_.clear();
   for (int i = 0; i < num_particles_; i++) {
-      double weight = 1.0 / num_particles_;
+      double weight = std::log(1.0 / num_particles_);
       Particle particle;
       float x = rng_.Gaussian(loc.x(), initial_x_stddev_);
       float y = rng_.Gaussian(loc.y(), initial_y_stddev_);
@@ -327,15 +369,17 @@ void ParticleFilter::GetLocation(Eigen::Vector2f* loc_ptr,
                                  float* angle_ptr) const {
   Vector2f& loc = *loc_ptr;
   float& angle = *angle_ptr;
-  // Compute the best estimate of the robot's location based on the current set
-  // of particles. The computed values must be set to the `loc` and `angle`
-  // variables to return them. Modify the following assignments:
   
   // Default location when there are no particles
   if(particles_.empty()){
   	loc = Vector2f(0,0);
   	angle = 0;
   	return;
+  }
+
+  if(justResampled_){
+  	loc = particles_[lastUpdateBestParticleIndex_].loc;
+	angle = particles_[lastUpdateBestParticleIndex_].angle;
   }
 
   //Getting the particle with highest weight

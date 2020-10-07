@@ -75,7 +75,7 @@ class ParticleFilter {
               Particle* p);
 
   // Resample particles.
-  void Resample();
+  void Resample(const std::vector<double>& normWeightProbs);
 
   // For debugging: get predicted point cloud from current location.
   void GetPredictedPointCloud(const Eigen::Vector2f& loc,
@@ -275,7 +275,7 @@ class ParticleFilter {
   /*
    * Fixed obs probability for d_short
    */
-  float d_short_prob_ = std::exp(-squared_d_short_/squared_laser_stddev_); 
+  float d_short_log_prob_ = -squared_d_short_/squared_laser_stddev_; 
   
   /*
    * Squared d_long for robust observation liklihood
@@ -287,7 +287,7 @@ class ParticleFilter {
   /*
    * Fixed Obs Probability for d_long
    */
-  float d_long_prob_ = std::exp(-squared_d_long_/squared_laser_stddev_);
+  float d_long_log_prob_ = -squared_d_long_/squared_laser_stddev_;
   
  /*
   * s_min for normalizing  Observation liklihood model (for making area under pdf = 1)
@@ -307,6 +307,16 @@ class ParticleFilter {
    */
    const float kDefaultObsD = 0.10; 
    float obs_d_;
+  
+   /*
+    * Distance travelled from last update step
+    */
+   float dispFromLastUpdate_;
+
+   /*
+    * Number of updates since last Resampling
+    */
+   int numUpdatesFromLastResample_;
    
    /*
     * K = Number of update steps before resampling 
@@ -314,7 +324,17 @@ class ParticleFilter {
     */
    const int kDefaultObsK = 10;
    int obs_k_;
+   /*
+    * Pointer to  keep track of the best weight particle after the latest update step
+    */
+   int lastUpdateBestParticleIndex_;
 
+   /*
+    * Boolean to indicate if the the resampling was done in last laser call back
+    * Will be used in GetLocation to choose previous best particle since the weights 
+    * will be reset after resampling.
+    */
+   bool justResampled_;
 
   /**
    * First motion model parameter (used in standard deviation of rotation).
