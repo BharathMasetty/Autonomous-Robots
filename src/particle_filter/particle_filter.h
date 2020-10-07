@@ -79,14 +79,14 @@ class ParticleFilter {
 
   // For debugging: get predicted point cloud from current location.
   void GetPredictedPointCloud(const Eigen::Vector2f& loc,
-		  	      const float angle,
+                              const float angle,
                               int num_ranges,
                               float range_min,
                               float range_max,
                               float angle_min,
                               float angle_max,
                               std::vector<Eigen::Vector2f>* scan,
-			      std::vector<float>* ranges);
+                              std::vector<float>* ranges);
 
  private:
 
@@ -144,23 +144,23 @@ class ParticleFilter {
   * ROS parameter name for d_short in observation model
   */
  const std::string kObsDshortParamName = "observation_d_short";
- /*
+ /**
   *ROS parameter name for d_long in observation model
   */
  const std::string kObsDlongParamName = "observation_d_long";
- /*
+ /**
   *ROS paramter name for s_min in observation model
   */
  const std::string kObsSminParamName = "observation_s_min";
- /*
+ /**
   *ROS parameter name for s_max in observation model
   */
   const std::string kObsSmaxParamName = "observation_s_max";
- /*
+ /**
   * ROS parameter name for D - distance between 2 update calls
   */
   const std::string kObsDParamName = "observation_d";
-  /*
+  /**
    * ROS Parameter name for K - number of updates between two resample calls
    */
   const std::string kObsKParamName = "observation_k";
@@ -239,97 +239,100 @@ class ParticleFilter {
    */
   double initial_theta_stddev_;
 
-  /*
-   *  Returns the closest point and intersection and distance to it along a given laser line.
+  /**
+   * Returns the closest point and intersection and distance to it along a given laser line.
    */
-  std::pair<Eigen::Vector2f, float> GetIntersectionPoint(const Eigen::Vector2f LidarLoc, 
-		  					 const float laserAngle, 
-							 const float angle, 
-							 float range_min, 
-							 float range_max);
+  std::pair<Eigen::Vector2f, float> GetIntersectionPoint(const Eigen::Vector2f &LidarLoc,
+                                                         const float &laserAngle,
+                                                         const float &angle,
+                                                         const float &range_min,
+                                                         const float &range_max);
 
-  /*
-   * Traslation between Lidar and baseLink
+  /**
+   * Translation between Lidar and baseLink
    * This distance is along x axis of the base link (Lidar Loc wrt base link is (0.2, 0))
    */
   const float kDisplacementFromBaseToLidar = 0.2;
 
-  /*
+  /**
    * Gamma: correlation parameter for observation model in update step
    * gamma = 1 => No correlation among cloud points.
    * gamma = 1/n where n is number of cloud points => Full correlation.
    */
   const double kDefaultGamma = 1; 
-  double gamma_; 
-  /*
-   *squared standard deviation of the observation model
+  double gamma_;
+
+  /**
+   * Squared standard deviation of the observation model
    */
   const float kDefaultSquaredLaserStdDev = 1.0; 
   float squared_laser_stddev_;
-  /*
-   * squared d_short for robust observation liklihood 
+
+  /**
+   * Squared d_short for robust observation likelihood
    */ 
   const float kDefaultDshort = 0.3;
   float d_short_;
-  float squared_d_short_ = std::pow(d_short_,2); 
-  /*
+  float squared_d_short_;
+
+  /**
    * Fixed obs probability for d_short
    */
-  float d_short_log_prob_ = -squared_d_short_/squared_laser_stddev_; 
+  float d_short_log_prob_;
   
-  /*
+  /**
    * Squared d_long for robust observation liklihood
    */ 
   const float kDefaultDlong = 0.3;
   float d_long_;
-  float squared_d_long_ = std::pow(d_long_,2);
+  float squared_d_long_;
   
-  /*
+  /**
    * Fixed Obs Probability for d_long
    */
-  float d_long_log_prob_ = -squared_d_long_/squared_laser_stddev_;
+  float d_long_log_prob_;
   
- /*
+ /**
   * s_min for normalizing  Observation liklihood model (for making area under pdf = 1)
   */  
   float s_min_;
   const float kDefaultSmin = 1.0;
   
-  /*
+  /**
    * s_max for normalizing observation liklihood model (for making aread under pdf = 1)
    */
   float s_max_;
   const float kDefaultSmax = 1.0;
   
-  /*
+  /**
    * D = distance the car has to travel between two update steps 
    * Setting it to a default value of 10 cm
    */
    const float kDefaultObsD = 0.10; 
    float obs_d_;
   
-   /*
+   /**
     * Distance travelled from last update step
     */
    float dispFromLastUpdate_;
 
-   /*
+   /**
     * Number of updates since last Resampling
     */
    int numUpdatesFromLastResample_;
    
-   /*
+   /**
     * K = Number of update steps before resampling 
     * setting to a default value of 10
     */
    const int kDefaultObsK = 10;
    int obs_k_;
-   /*
+   /**
     * Pointer to  keep track of the best weight particle after the latest update step
     */
    int lastUpdateBestParticleIndex_;
 
-   /*
+   /**
     * Boolean to indicate if the the resampling was done in last laser call back
     * Will be used in GetLocation to choose previous best particle since the weights 
     * will be reset after resampling.
@@ -339,22 +342,22 @@ class ParticleFilter {
   /**
    * First motion model parameter (used in standard deviation of rotation).
    */
-  double motion_model_alpha_1;
+  double motion_model_alpha_1_;
 
   /**
    * Second motion model parameter (used in standard deviation of rotation).
    */
-  double motion_model_alpha_2;
+  double motion_model_alpha_2_;
 
   /**
    * Third motion model parameter (used in standard deviation of translation).
    */
-  double motion_model_alpha_3;
+  double motion_model_alpha_3_;
 
   /**
    * Fourth motion model parameter (used in standard deviation of translation).
    */
-  double motion_model_alpha_4;
+  double motion_model_alpha_4_;
 };
 }  // namespace slam
 
