@@ -47,7 +47,7 @@ using Eigen::Vector2f;
 using Eigen::Vector2i;
 using vector_map::VectorMap;
 
-DEFINE_double(num_particles, 50, "Number of particles");
+//DEFINE_double(num_particles, 50, "Number of particles");
 
 namespace particle_filter {
 
@@ -58,17 +58,17 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     prev_odom_angle_(0),
     odom_initialized_(false) {
     
-    // Initialization Parameters	 	 
+    // Initialization Parameters
     n->param(kNumParticlesParamName, num_particles_, kDefaultNumParticles);
     n->param(kInitialXStdDevParamName, initial_x_stddev_, kDefaultInitialXStdDev);
     n->param(kInitialYStdDevParamName, initial_y_stddev_, kDefaultInitialYStdDev);
     n->param(kInitialThetaStdDevParamName, initial_theta_stddev_, kDefaultInitialThetaStdDev);
     
     // Motion model parameters 
-    n->param(kMotionModelAlpha1ParamName, motion_model_alpha_1, kDefaultMotionModelAlpha1);
-    n->param(kMotionModelAlpha2ParamName, motion_model_alpha_2, kDefaultMotionModelAlpha2);
-    n->param(kMotionModelAlpha3ParamName, motion_model_alpha_3, kDefaultMotionModelAlpha3);
-    n->param(kMotionModelAlpha4ParamName, motion_model_alpha_4, kDefaultMotionModelAlpha4);
+    n->param(kMotionModelAlpha1ParamName, motion_model_alpha_1_, kDefaultMotionModelAlpha1);
+    n->param(kMotionModelAlpha2ParamName, motion_model_alpha_2_, kDefaultMotionModelAlpha2);
+    n->param(kMotionModelAlpha3ParamName, motion_model_alpha_3_, kDefaultMotionModelAlpha3);
+    n->param(kMotionModelAlpha4ParamName, motion_model_alpha_4_, kDefaultMotionModelAlpha4);
     
     // Observation Model Parameters 
     n->param(kObsGammaParamName, gamma_, kDefaultGamma);
@@ -78,74 +78,72 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     n->param(kObsSminParamName, s_min_, kDefaultSmin);
     n->param(kObsSmaxParamName, s_max_, kDefaultSmax);
     n->param(kObsDParamName, obs_d_, kDefaultObsD);
-    n->param(kObsKParamName, obs_k_, kDefaultObsK);    
+    n->param(kObsKParamName, obs_k_, kDefaultObsK);
 
     ROS_INFO_STREAM("Number of particles: " << num_particles_);
     ROS_INFO_STREAM("Std dev for initial pose x, y, and theta " << initial_x_stddev_ << ", " << initial_y_stddev_
             << ", " << initial_theta_stddev_);
-    ROS_INFO_STREAM("Motion model parameters (1-4): " << motion_model_alpha_1 << ", " << motion_model_alpha_2
-            << ", " << motion_model_alpha_3 << ", " << motion_model_alpha_4);
-
-    n->param(kMotionModelAlpha1ParamName, motion_model_alpha_1, kDefaultMotionModelAlpha1);
-    n->param(kMotionModelAlpha2ParamName, motion_model_alpha_2, kDefaultMotionModelAlpha2);
-    n->param(kMotionModelAlpha3ParamName, motion_model_alpha_3, kDefaultMotionModelAlpha3);
-    n->param(kMotionModelAlpha4ParamName, motion_model_alpha_4, kDefaultMotionModelAlpha4);
-
-    ROS_INFO_STREAM("Number of particles: " << num_particles_);
-    ROS_INFO_STREAM("Std dev for initial pose x, y, and theta " << initial_x_stddev_ << ", " << initial_y_stddev_
-            << ", " << initial_theta_stddev_);
-    ROS_INFO_STREAM("Motion model parameters (1-4): " << motion_model_alpha_1 << ", " << motion_model_alpha_2
-            << ", " << motion_model_alpha_3 << ", " << motion_model_alpha_4);
+    ROS_INFO_STREAM("Motion model parameters (1-4): " << motion_model_alpha_1_ << ", " << motion_model_alpha_2_
+            << ", " << motion_model_alpha_3_ << ", " << motion_model_alpha_4_);
     ROS_INFO_STREAM("Observation Model Parameters: gamma: " << gamma_ << " square stddev-obs liklihood: " << squared_laser_stddev_);
     ROS_INFO_STREAM("Distance Between two update calls : " << obs_d_);
     ROS_INFO_STREAM("Updates between two resample calls: "<< obs_k_);
+
+    d_short_log_prob_ = -squared_d_short_ / squared_laser_stddev_;
+    squared_d_short_ = std::pow(d_short_, 2);
+    squared_d_long_ = std::pow(d_long_, 2);
+    d_long_log_prob_ = -squared_d_long_/squared_laser_stddev_;
+
+    dispFromLastUpdate_ = 0;
+    lastUpdateBestParticleIndex_ = -1;
+    justResampled_ = false;
 }
 
 void ParticleFilter::GetParticles(vector<Particle>* particles) const {
   *particles = particles_;
 }
 
-std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(const Vector2f LidarLoc, 
-								       const float laserAngle, 
-								       const float angle, 
-								       float range_min, 
-								       float range_max){
+std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(const Vector2f &LidarLoc,
+                                                                       const float &laserAngle,
+                                                                       const float &angle,
+                                                                       const float &range_min,
+                                                                       const float &range_max) {
 
-	// Laser Line start and end wrt map frame
-	Vector2f startPoint(LidarLoc.x() + range_min*cos(laserAngle + angle), LidarLoc.y() + range_min*sin(laserAngle + angle));
-	Vector2f endPoint(LidarLoc.x() + range_max*cos(laserAngle + angle), LidarLoc.y() + range_max*sin(laserAngle + angle));
+    // Laser Line start and end wrt map frame
+    Vector2f startPoint(LidarLoc.x() + range_min*cos(laserAngle + angle), LidarLoc.y() + range_min*sin(laserAngle + angle));
+    Vector2f endPoint(LidarLoc.x() + range_max*cos(laserAngle + angle), LidarLoc.y() + range_max*sin(laserAngle + angle));
 
-	// Laser Line
-	line2f LaserLine(startPoint.x(), startPoint.y(), endPoint.x(), endPoint.y());
-	
-	// checking for intersection with map lines
-	float currBestRange = range_max;
-	Vector2f bestIntersection = endPoint;
-	for (size_t i = 0; i < map_.lines.size(); ++i){
-		const line2f map_line = map_.lines[i];
-			Vector2f intersectionPoint;
-			bool intersects = map_line.Intersection(LaserLine, &intersectionPoint);
-			if (intersects){
-				float curr_range = (intersectionPoint - LidarLoc).norm();
-				if (curr_range <= currBestRange){
-					currBestRange = curr_range;
-					bestIntersection = intersectionPoint;
-				}			
-			}
-	}
-  	 
-	return std::make_pair(bestIntersection, currBestRange);
+    // Laser Line
+    line2f LaserLine(startPoint.x(), startPoint.y(), endPoint.x(), endPoint.y());
+
+    // checking for intersection with map lines
+    float currBestRange = range_max;
+    Vector2f bestIntersection = endPoint;
+    for (size_t i = 0; i < map_.lines.size(); ++i){
+        const line2f map_line = map_.lines[i];
+        Vector2f intersectionPoint;
+        bool intersects = map_line.Intersection(LaserLine, &intersectionPoint);
+        if (intersects) {
+            float curr_range = (intersectionPoint - LidarLoc).norm();
+            if (curr_range <= currBestRange){
+                currBestRange = curr_range;
+                bestIntersection = intersectionPoint;
+            }
+        }
+    }
+
+    return std::make_pair(bestIntersection, currBestRange);
 }
 
 void ParticleFilter::GetPredictedPointCloud(const Vector2f& loc,
-					    const float angle,
+                                            const float angle,
                                             int num_ranges,
                                             float range_min,
                                             float range_max,
                                             float angle_min,
                                             float angle_max,
                                             vector<Vector2f>* scan_ptr,
-					    vector<float>* ranges_ptr) {
+                                            vector<float>* ranges_ptr) {
   // Lidar Location wrt Map Frame
   Vector2f LidarLoc(loc.x() + kDisplacementFromBaseToLidar*cos(angle), loc.y() + kDisplacementFromBaseToLidar*sin(angle));
   
@@ -156,11 +154,11 @@ void ParticleFilter::GetPredictedPointCloud(const Vector2f& loc,
   const float angleIncrement = (angle_max - angle_min)/(num_ranges-1);
   // Predictions for each scan direction 
   for (int i=0; i< num_ranges; i++) {
-	
-	float currLaserAngle = angle_min + i*angleIncrement; 	    
-	std::pair<Vector2f, float> cloudPointInfo = GetIntersectionPoint(LidarLoc, currLaserAngle, angle, range_min, range_max);
-	scan[i] = cloudPointInfo.first;
- 	ranges[i] = cloudPointInfo.second; 
+
+    float currLaserAngle = angle_min + i*angleIncrement;
+    std::pair<Vector2f, float> cloudPointInfo = GetIntersectionPoint(LidarLoc, currLaserAngle, angle, range_min, range_max);
+    scan[i] = cloudPointInfo.first;
+     ranges[i] = cloudPointInfo.second;
   }
 }
 
@@ -169,7 +167,7 @@ void ParticleFilter::Update(const vector<float>& ranges,
                             float range_max,
                             float angle_min,
                             float angle_max,
-  			    Particle* p_ptr) {
+                  Particle* p_ptr) {
   
   Particle& p = *p_ptr; 
   vector<Vector2f> predictedPointCloud;
@@ -179,29 +177,28 @@ void ParticleFilter::Update(const vector<float>& ranges,
   
   float currObservationLogProb = 0; 
   for (int i = 0; i < num_ranges; i++){
-	  //std::cout << "RangeNum: " << i << " pred range " << predictedRanges[i] << " actual range " << ranges[i] << std::endl;  
-	  float diff = predictedRanges[i] - ranges[i];
-	  float squaredDiff = std::pow(diff, 2);
-	  float currObservationLogProb; 
-	  
-	  // Simple Observation Model
-	  currObservationLogProb += -squaredDiff/squared_laser_stddev_;
-  		
-	 /* 
-	  // Robust Model here --- Switch to this if needed
-	  // NOTE: This might need more tuning  efforst becasue of 4 extra parameters
-	  if(diff < -s_min_ || diff > s_max_){
-	  	currObservationLogProb += -std::numeric_limits<double>::infinity();
-	  }else if(diff < -d_short_){
-	  	currObservationLogProb += d_short_log_prob_;
-	  }
-	  else if(diff > d_long_){
-	  	currObservationLogProb += d_long_log_prob_;
-	  }
-	  else {
-	  	currObservationLogProb += -squaredDiff/squared_laser_stddev_;
-	  }*/
-	  
+      //std::cout << "RangeNum: " << i << " pred range " << predictedRanges[i] << " actual range " << ranges[i] << std::endl;
+      float diff = predictedRanges[i] - ranges[i];
+      float squaredDiff = std::pow(diff, 2);
+
+      // Simple Observation Model
+      currObservationLogProb += -squaredDiff/squared_laser_stddev_;
+
+     /*
+      // Robust Model here --- Switch to this if needed
+      // NOTE: This might need more tuning  efforst becasue of 4 extra parameters
+      if(diff < -s_min_ || diff > s_max_){
+          currObservationLogProb += -std::numeric_limits<double>::infinity();
+      }else if(diff < -d_short_){
+          currObservationLogProb += d_short_log_prob_;
+      }
+      else if(diff > d_long_){
+          currObservationLogProb += d_long_log_prob_;
+      }
+      else {
+          currObservationLogProb += -squaredDiff/squared_laser_stddev_;
+      }*/
+
   }
   
   // accounting for correlation in the joint probability
@@ -210,27 +207,28 @@ void ParticleFilter::Update(const vector<float>& ranges,
 
 void ParticleFilter::Resample(const std::vector<double>& normWeightProbs) {
   // Initialize the D for calculating range
-  double particles_weight_new[particles_.size()] = {};   //creating an empty array for calculating Weight*D
+  std::vector<double> particles_weight_new;
+  particles_weight_new.reserve(particles_.size());   //creating an empty array for calculating Weight*D
   std::vector<Particle> new_particles = {};                 //initialising a vector for particles
   double prev_particle_range_upper_bound = 0;
-  for (uint i=0; i < particles_.size();i++){
-      //particles_weight_new[i] = particles_[i].weight + prev_particle_range_upper_bound;
+  for (size_t i = 0; i < particles_.size(); i++) {
       particles_weight_new[i] = normWeightProbs[i] + prev_particle_range_upper_bound;
       prev_particle_range_upper_bound = particles_weight_new[i];
-      }
+  }
+
   //this loop will run for the given number of particles for resampling with unweighing
-  for (uint i =0; i<particles_.size(); i++) {
+  for (size_t i =0; i<particles_.size(); i++) {
       float x = rng_.UniformRandom(0, 1);               //uniform random number generator
-      for (uint i = 0; i < particles_.size(); i++) {
-          if (x < particles_weight_new[i]) {
-              new_particles.push_back(particles_[i]);
+      for (size_t j = 0; j < particles_.size(); j++) {
+          if (x < particles_weight_new[j]) {
+              new_particles.push_back(particles_[j]);
               break;
           }
       }
   }
   particles_ = new_particles;
   //initialize all particle weights to be 1/N
-  for (uint i = 0; i<particles_.size(); i++){
+  for (size_t i = 0; i<particles_.size(); i++){
       particles_[i].weight = log(1/num_particles_);
   }
 }
@@ -241,55 +239,52 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
                                   float range_max,
                                   float angle_min,
                                   float angle_max) {
-	
-	 /*
-	  * 1) Check if the car as traveled some distance
-	  * 2) Update if needed
-	  * 3) Check resampling 
-	  * 4) Resample if needed  -- This resets the particle weights
-	  */
-	
-	 // This should always be false and only set true when enters resampling
-	 justResampled_ = false;
-	 int bestParticleIndex = 0;
-  	 double bestWeight = -std::numeric_limits<double>::infinity();
-	 
-	 // Checking if we want to update or not
-	 if (dispFromLastUpdate_ >= obs_d_){
-		 
-		 dispFromLastUpdate_ = 0;
-		 for (uint i=0; i<particles_.size(); i++){
-                	Update(ranges, range_min, range_max, angle_min, angle_max, &particles_[i]);
-                	if(particles_[i].weight >= bestWeight){
-				bestWeight = particles_[i].weight;
-				bestParticleIndex = i;
-			}
-                }
-		lastUpdateBestParticleIndex_ = bestParticleIndex;
-		
-		// Counter for updates done without resampling
-		numUpdatesFromLastResample_ += 1;
 
-		// Checking of we want to resample of not
-		if (numUpdatesFromLastResample_ >= obs_k_){
-			
-			//Normalize Log probs
-			std::vector<double> normalizedProbWeights;
-			double bestWeightProb = std::exp(particles_[bestParticleIndex].weight);
-			for (uint i=0; i<= particles_.size(); i++){
-				double prob = std::exp(particles_[i].weight);
-				normalizedProbWeights.push_back(prob/bestWeightProb);
-			}
+     /*
+      * 1) Check if the car as traveled some distance
+      * 2) Update if needed
+      * 3) Check resampling
+      * 4) Resample if needed  -- This resets the particle weights
+      */
+    
+     // This should always be false and only set true when enters resampling
+     justResampled_ = false;
+     int bestParticleIndex = 0;
+       double bestWeight = -std::numeric_limits<double>::infinity();
 
-			//Resample
-			Resample(normalizedProbWeights);
-			justResampled_ = true;
-			numUpdatesFromLastResample_ = 0;
+     // Checking if we want to update or not
+     if (dispFromLastUpdate_ >= obs_d_) {
 
-		}
-	 
-	 }
+         dispFromLastUpdate_ = 0;
+         for (size_t i=0; i<particles_.size(); i++){
+             Update(ranges, range_min, range_max, angle_min, angle_max, &particles_[i]);
+             if (particles_[i].weight >= bestWeight) {
+                 bestWeight = particles_[i].weight;
+                 bestParticleIndex = i;
+             }
+         }
 
+         lastUpdateBestParticleIndex_ = bestParticleIndex;
+         // Counter for updates done without resampling
+         numUpdatesFromLastResample_ += 1;
+
+         // Checking of we want to resample of not
+         if (numUpdatesFromLastResample_ >= obs_k_){
+
+            //Normalize Log probs
+            std::vector<double> normalizedProbWeights;
+            double bestWeightProb = std::exp(particles_[bestParticleIndex].weight);
+            for (size_t i=0; i<= particles_.size(); i++) {
+                double prob = std::exp(particles_[i].weight);
+                normalizedProbWeights.push_back(prob/bestWeightProb);
+            }
+
+            //Resample
+            Resample(normalizedProbWeights);
+            justResampled_ = true;
+            numUpdatesFromLastResample_ = 0;
+        }
+     }
 }
 
 void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
@@ -310,19 +305,19 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
       double delta_rot_1 = atan2(curr_odom_y - prev_odom_y, curr_odom_x - prev_odom_x) - prev_odom_angle_;
       double delta_trans = (odom_loc - prev_odom_loc_).norm();
       double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
-	
+
       // Keeping track of distance travelled since last update call
       dispFromLastUpdate_ += delta_trans;
 
-      for (uint32_t i = 0; i < particles_.size(); i++) {
+      for (size_t i = 0; i < particles_.size(); i++) {
 
           // TODO ppts of this concept don't square delta_rot_1, delta_trans, or delta_rot_2. Should we?
           double delta_rot_1_std_dev =
-                  sqrt((motion_model_alpha_1 * pow(delta_rot_1, 2)) + (motion_model_alpha_2 * pow(delta_trans, 2)));
-          double delta_trans_std_dev = sqrt((motion_model_alpha_3 * pow(delta_trans, 2)) +
-                  (motion_model_alpha_4 * (pow(delta_rot_1, 2) + pow(delta_rot_2, 2))));
+                  sqrt((motion_model_alpha_1_ * pow(delta_rot_1, 2)) + (motion_model_alpha_2_ * pow(delta_trans, 2)));
+          double delta_trans_std_dev = sqrt((motion_model_alpha_3_ * pow(delta_trans, 2)) +
+                                            (motion_model_alpha_4_ * (pow(delta_rot_1, 2) + pow(delta_rot_2, 2))));
           double delta_rot_2_std_dev =
-                  sqrt((motion_model_alpha_1 * pow(delta_rot_2, 2)) + (motion_model_alpha_2 * pow(delta_trans, 2)));
+                  sqrt((motion_model_alpha_1_ * pow(delta_rot_2, 2)) + (motion_model_alpha_2_ * pow(delta_trans, 2)));
 
           double delta_rot_1_noise = rng_.Gaussian(0.0, sqrt(delta_rot_1_std_dev));
           double delta_trans_noise = rng_.Gaussian(0.0, sqrt(delta_trans_std_dev));
@@ -355,7 +350,8 @@ void ParticleFilter::Initialize(const string& map_file,
                                 const Vector2f& loc,
                                 const float angle) {
   // The "set_pose" button on the GUI was clicked, or an initialization message
-  // was received from the log. Initialize the particles accordingly, e.g. with
+  // was received from the log. Initialg
+  // ize the particles accordingly, e.g. with
   // some distribution around the provided location and angle.
 
   map_.Load("maps/" + map_file + ".txt");
@@ -377,31 +373,32 @@ void ParticleFilter::Initialize(const string& map_file,
 
 void ParticleFilter::GetLocation(Eigen::Vector2f* loc_ptr, 
                                  float* angle_ptr) const {
-  Vector2f& loc = *loc_ptr;
-  float& angle = *angle_ptr;
-  
-  // Default location when there are no particles
-  if(particles_.empty()){
-  	loc = Vector2f(0,0);
-  	angle = 0;
-  	return;
-  }
+    Vector2f& loc = *loc_ptr;
+    float& angle = *angle_ptr;
 
-  if(justResampled_){
-  	loc = particles_[lastUpdateBestParticleIndex_].loc;
-	angle = particles_[lastUpdateBestParticleIndex_].angle;
-  }
+    // Default location when there are no particles
+    if(particles_.empty()){
+        loc = Vector2f(0,0);
+        angle = 0;
+        return;
+    }
 
-  //Getting the particle with highest weight
-  double bestWeight = -1.0;
-  uint bestParticleIndex=0;
-  for(uint i =0; i<particles_.size();i++){
-  	if(particles_[i].weight >= bestWeight){
-		bestWeight = particles_[i].weight;
-		bestParticleIndex = i;
-	}
-  }
-  loc = particles_[bestParticleIndex].loc;
-  angle = particles_[bestParticleIndex].angle;
-  }
+    if (justResampled_) {
+        loc = particles_[lastUpdateBestParticleIndex_].loc;
+        angle = particles_[lastUpdateBestParticleIndex_].angle;
+        return;
+    }
+
+    // Getting the particle with highest weight
+    double bestWeight = -std::numeric_limits<double>::infinity();
+    size_t bestParticleIndex = 0;
+    for(size_t i =0; i<particles_.size();i++) {
+        if(particles_[i].weight >= bestWeight) {
+            bestWeight = particles_[i].weight;
+            bestParticleIndex = i;
+        }
+    }
+    loc = particles_[bestParticleIndex].loc;
+    angle = particles_[bestParticleIndex].angle;
+}
 }  // namespace particle_filter
