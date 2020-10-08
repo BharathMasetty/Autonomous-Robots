@@ -221,13 +221,20 @@ void ParticleFilter::Resample(const std::vector<double>& normWeightProbs) {
   }
 
   //this loop will run for the given number of particles for resampling with unweighing
+  float low_var_sampl_inc = weight_sum / particles_.size();
+  float random_num = rng_.UniformRandom(0, weight_sum);
+
+  size_t particle_search_index = 0;
   for (size_t i =0; i<particles_.size(); i++) {
-      float x = rng_.UniformRandom(0, weight_sum);               //uniform random number generator
-      for (size_t j = 0; j < particles_.size(); j++) {
-          if (x < particles_weight_new[j]) {
-              new_particles.push_back(particles_[j]);
-              break;
-          }
+
+      while (random_num > particles_weight_new[particle_search_index]) {
+          particle_search_index++;
+      }
+      new_particles.push_back(particles_[particle_search_index]);
+      random_num += low_var_sampl_inc;
+      if (random_num > weight_sum) {
+          particle_search_index = 0;
+          random_num -= weight_sum;
       }
   }
 
@@ -244,6 +251,10 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
                                   float range_max,
                                   float angle_min,
                                   float angle_max) {
+
+    if (particles_.empty()) {
+        return;
+    }
 
      /*
       * 1) Check if the car as traveled some distance
