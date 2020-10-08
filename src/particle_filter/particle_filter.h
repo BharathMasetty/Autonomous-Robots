@@ -166,6 +166,12 @@ class ParticleFilter {
   const std::string kObsKParamName = "observation_k";
 
   /**
+   * ROS parameter name for the distance that a particle can be (at most) from the maximum weight particle to be
+   * included in the weighted average used to get the localization estimate.
+   */
+  const std::string kGetLocationAveragingDistParamName = "get_loc_averaging_dist";
+
+  /**
    * Default number of particles.
    */
   const int kDefaultNumParticles = 50;
@@ -209,6 +215,12 @@ class ParticleFilter {
    */
   const double kDefaultMotionModelAlpha4 = 0.01;
 
+  /**
+   * Default value of the distance that a particle can be (at most) from the maximum weight particle to be included in
+   * the weighted average used to get the localization estimate.
+   */
+  const double kDefaultGetLocAveragingDist = 0.25;
+
   // List of particles being tracked.
   std::vector<Particle> particles_;
 
@@ -242,15 +254,6 @@ class ParticleFilter {
    * Standard deviation to use when setting the theta component of the initial particles.
    */
   double initial_theta_stddev_;
-
-  /**
-   * Returns the closest point and intersection and distance to it along a given laser line.
-   */
-  std::pair<Eigen::Vector2f, float> GetIntersectionPoint(const Eigen::Vector2f &LidarLoc,
-                                                         const float &laserAngle,
-                                                         const float &angle,
-                                                         const float &range_min,
-                                                         const float &range_max);
 
   /**
    * Translation between Lidar and baseLink
@@ -367,6 +370,38 @@ class ParticleFilter {
    * Fourth motion model parameter (used in standard deviation of translation).
    */
   double motion_model_alpha_4_;
+
+  /**
+   * When calling getLocation, particles within this distance of the best weighted particle should be used in a weighted
+   * average to get the location. This should improve the smoothness of the localization estimate.
+   */
+  double get_loc_averaging_dist_;
+
+  /**
+   * Get the scaled particle weight.
+   * @param particle_log_likelihood         Unnormalized particle log likelihood.
+   * @param max_particle_log_likelihood     Unnormalized log likelihood of the best particle.
+   *
+   * @return Unnormalized likelihood of the particle (scaled by the max particle's likelihood).
+   */
+  double getScaledWeight(const double &particle_log_likelihood, const double &max_particle_log_likelihood) const;
+
+  /**
+   * Returns the closest point and intersection and distance to it along a given laser line.
+   */
+  std::pair<Eigen::Vector2f, float> GetIntersectionPoint(const Eigen::Vector2f &LidarLoc,
+          const float &laserAngle, const float &angle, const float &range_min, const float &range_max);
+
+  /**
+   * Find the particles around the best weight particle and get the robot pose by taking a weighted average of the
+   * particles nearest to the best particle.
+   *
+   * @param highest_weight_particle_index Index of the highest weight particle.
+   *
+   * @return Position and orientation constructed by taking a weighted average of particles near the highest weight
+   * particle.
+   */
+  std::pair<Eigen::Vector2f, float> getWeightedAverageRobotLocation(const size_t &highest_weight_particle_index) const;
 };
 }  // namespace slam
 

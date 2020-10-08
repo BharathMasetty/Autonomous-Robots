@@ -80,6 +80,8 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     n->param(kObsDParamName, obs_d_, kDefaultObsD);
     n->param(kObsKParamName, obs_k_, kDefaultObsK);
 
+    n->param(kGetLocationAveragingDistParamName, get_loc_averaging_dist_, kDefaultGetLocAveragingDist);
+
     ROS_INFO_STREAM("Number of particles: " << num_particles_);
     ROS_INFO_STREAM("Std dev for initial pose x, y, and theta " << initial_x_stddev_ << ", " << initial_y_stddev_
             << ", " << initial_theta_stddev_);
@@ -230,19 +232,23 @@ void ParticleFilter::Resample(const std::vector<double>& normWeightProbs) {
   float random_num = rng_.UniformRandom(0, weight_sum);
 
   size_t particle_search_index = 0;
+  size_t best_weight_index = 0;
   for (size_t i =0; i<particles_.size(); i++) {
 
       while (random_num > particles_weight_new[particle_search_index]) {
           particle_search_index++;
       }
       new_particles.push_back(particles_[particle_search_index]);
+      if (new_particles[i].weight > new_particles[best_weight_index].weight) {
+          best_weight_index = i;
+      }
       random_num += low_var_sampl_inc;
       if (random_num > weight_sum) {
           particle_search_index = 0;
           random_num -= weight_sum;
       }
   }
-
+  lastUpdateBestParticleIndex_ = best_weight_index;
   particles_ = new_particles;
   //initialize all particle weights to be 1/N
   for (size_t i = 0; i<particles_.size(); i++){
@@ -295,8 +301,8 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
             //Normalize Log probs
             std::vector<double> normalizedProbWeights;
             for (size_t i=0; i<= particles_.size(); i++) {
-                double relative_log_prob = particles_[i].weight - particles_[bestParticleIndex].weight;
-                normalizedProbWeights.push_back(std::exp(relative_log_prob));
+                normalizedProbWeights.push_back(getScaledWeight(particles_[i].weight,
+                                                                particles_[bestParticleIndex].weight));
             }
 
             //Resample
@@ -379,6 +385,7 @@ void ParticleFilter::Initialize(const string& map_file,
   map_.Load("maps/" + map_file + ".txt");
   odom_initialized_ = false;
   dispFromLastUpdate_ = 0;
+  lastUpdateBestParticleIndex_ = rng_.RandomInt(0, num_particles_);
   particles_.clear();
   for (int i = 0; i < num_particles_; i++) {
       double weight = std::log(1.0 / num_particles_);
@@ -405,22 +412,48 @@ void ParticleFilter::GetLocation(Eigen::Vector2f* loc_ptr,
         return;
     }
 
-    if (justResampled_) {
-        loc = particles_[lastUpdateBestParticleIndex_].loc;
-        angle = particles_[lastUpdateBestParticleIndex_].angle;
-        return;
-    }
+    std::pair<Vector2f, float> smoothed_best_loc = getWeightedAverageRobotLocation(lastUpdateBestParticleIndex_);
 
-    // Getting the particle with highest weight
-    double bestWeight = -std::numeric_limits<double>::infinity();
-    size_t bestParticleIndex = 0;
-    for(size_t i =0; i<particles_.size();i++) {
-        if(particles_[i].weight >= bestWeight) {
-            bestWeight = particles_[i].weight;
-            bestParticleIndex = i;
+    loc = smoothed_best_loc.first;
+    angle = smoothed_best_loc.second;
+}
+
+
+std::pair<Eigen::Vector2f, float> ParticleFilter::getWeightedAverageRobotLocation(
+            const size_t &highest_weight_particle_index) const {
+    double x_weighted_avg = 0;
+    double y_weighted_avg = 0;
+
+    // Averaging angle by converting each angle to a point on the unit circle and then averaging those points, and
+    // converting the resultant point back to polar coordinates
+    // See http://en.wikipedia.org/wiki/Mean_of_circular_quantities
+    double angle_x_weighted_avg = 0;
+    double angle_y_weighted_avg = 0;
+    double weight_sum = 0;
+
+    Particle best_particle = particles_[highest_weight_particle_index];
+    for (const Particle &particle : particles_) {
+        if ((best_particle.loc - particle.loc).norm() <= get_loc_averaging_dist_) {
+            double weight = getScaledWeight(particle.weight, best_particle.weight);
+            weight_sum += weight;
+            x_weighted_avg += weight * particle.loc.x();
+            y_weighted_avg += weight * particle.loc.y();
+            angle_x_weighted_avg += weight * cos(particle.angle);
+            angle_y_weighted_avg += weight * sin(particle.angle);
         }
     }
-    loc = particles_[bestParticleIndex].loc;
-    angle = particles_[bestParticleIndex].angle;
+
+    x_weighted_avg /= weight_sum;
+    y_weighted_avg /= weight_sum;
+    angle_x_weighted_avg /= weight_sum;
+    angle_y_weighted_avg /= weight_sum;
+
+    double angle = atan2(angle_y_weighted_avg, angle_x_weighted_avg);
+    return std::make_pair(Vector2f(x_weighted_avg, y_weighted_avg), angle);
+}
+
+double ParticleFilter::getScaledWeight(const double &particle_log_likelihood,
+                                       const double &max_particle_log_likelihood) const {
+    return std::exp(particle_log_likelihood - max_particle_log_likelihood);
 }
 }  // namespace particle_filter
