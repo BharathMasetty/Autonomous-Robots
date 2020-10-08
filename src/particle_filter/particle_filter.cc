@@ -110,7 +110,7 @@ std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(const Vec
                                                                        const float &range_max) {
 
     // Laser Line start and end wrt map frame
-    Vector2f startPoint(LidarLoc.x() + range_min*cos(laserAngle + angle), LidarLoc.y() + range_min*sin(laserAngle + angle));
+    Vector2f startPoint(LidarLoc.x(), LidarLoc.y());
     Vector2f endPoint(LidarLoc.x() + range_max*cos(laserAngle + angle), LidarLoc.y() + range_max*sin(laserAngle + angle));
 
     // Laser Line
@@ -125,9 +125,14 @@ std::pair<Eigen::Vector2f, float> ParticleFilter::GetIntersectionPoint(const Vec
         bool intersects = map_line.Intersection(LaserLine, &intersectionPoint);
         if (intersects) {
             float curr_range = (intersectionPoint - LidarLoc).norm();
-            if (curr_range <= currBestRange){
-                currBestRange = curr_range;
-                bestIntersection = intersectionPoint;
+            if (curr_range <= currBestRange) {
+                if (curr_range < range_min) {
+                    currBestRange = range_min;
+                    bestIntersection = Vector2f(LidarLoc.x() + range_min * cos(laserAngle + angle), LidarLoc.y() + range_min * sin(laserAngle + angle));
+                } else {
+                    currBestRange = curr_range;
+                    bestIntersection = intersectionPoint;
+                }
             }
         }
     }
@@ -153,7 +158,7 @@ void ParticleFilter::GetPredictedPointCloud(const Vector2f& loc,
   ranges.resize(num_ranges);
   const float angleIncrement = (angle_max - angle_min)/(num_ranges-1);
   // Predictions for each scan direction 
-  for (int i=0; i< num_ranges; i++) {
+  for (int i=0; i< num_ranges; i += laser_scan_keep_ratio_) {
 
     float currLaserAngle = angle_min + i*angleIncrement;
     std::pair<Vector2f, float> cloudPointInfo = GetIntersectionPoint(LidarLoc, currLaserAngle, angle, range_min, range_max);
@@ -176,7 +181,7 @@ void ParticleFilter::Update(const vector<float>& ranges,
   GetPredictedPointCloud(p.loc, p.angle, num_ranges, range_min, range_max, angle_min, angle_max, &predictedPointCloud, &predictedRanges);
   
   float currObservationLogProb = 0; 
-  for (int i = 0; i < num_ranges; i++){
+  for (int i = 0; i < num_ranges; i+= laser_scan_keep_ratio_){
       //std::cout << "RangeNum: " << i << " pred range " << predictedRanges[i] << " actual range " << ranges[i] << std::endl;
       float diff = predictedRanges[i] - ranges[i];
       float squaredDiff = std::pow(diff, 2);
@@ -309,51 +314,53 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
   // forward based on odometry.
 
   if (odom_initialized_) {
-
-      // Implementing odometry based motion model found on pg. 136 of Probabilistic Robotics book
-      float prev_odom_x = prev_odom_loc_.x();
-      float curr_odom_x = odom_loc.x();
-
-      float prev_odom_y = prev_odom_loc_.y();
-      float curr_odom_y = odom_loc.y();
-
-      double delta_rot_1 = atan2(curr_odom_y - prev_odom_y, curr_odom_x - prev_odom_x) - prev_odom_angle_;
       double delta_trans = (odom_loc - prev_odom_loc_).norm();
-      double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
 
+      if ((delta_trans != 0) || ((odom_angle - prev_odom_angle_) != 0)) {
 
-      // Keeping track of distance travelled since last update call
-      dispFromLastUpdate_ += delta_trans;
+          // Implementing odometry based motion model found on pg. 136 of Probabilistic Robotics book
+          float prev_odom_x = prev_odom_loc_.x();
+          float curr_odom_x = odom_loc.x();
 
-      for (size_t i = 0; i < particles_.size(); i++) {
+          float prev_odom_y = prev_odom_loc_.y();
+          float curr_odom_y = odom_loc.y();
+
+          double delta_rot_1 = atan2(curr_odom_y - prev_odom_y, curr_odom_x - prev_odom_x) - prev_odom_angle_;
+          double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
 
           // TODO ppts of this concept don't square delta_rot_1, delta_trans, or delta_rot_2. Should we?
           double delta_rot_1_std_dev =
                   sqrt((motion_model_alpha_1_ * pow(delta_rot_1, 2)) + (motion_model_alpha_2_ * pow(delta_trans, 2)));
           double delta_trans_std_dev = sqrt((motion_model_alpha_3_ * pow(delta_trans, 2)) +
-                                            (motion_model_alpha_4_ * (pow(delta_rot_1, 2) + pow(delta_rot_2, 2))));
+                  (motion_model_alpha_4_ * (pow(delta_rot_1, 2) + pow(delta_rot_2, 2))));
           double delta_rot_2_std_dev =
                   sqrt((motion_model_alpha_1_ * pow(delta_rot_2, 2)) + (motion_model_alpha_2_ * pow(delta_trans, 2)));
 
-          double delta_rot_1_noise = rng_.Gaussian(0.0, sqrt(delta_rot_1_std_dev));
-          double delta_trans_noise = rng_.Gaussian(0.0, sqrt(delta_trans_std_dev));
-          double delta_rot_2_noise = rng_.Gaussian(0.0, sqrt(delta_rot_2_std_dev));
+          // Keeping track of distance travelled since last update call
+          dispFromLastUpdate_ += delta_trans;
 
-          double delta_rot_1_hat = delta_rot_1 - delta_rot_1_noise;
-          double delta_trans_hat = delta_trans - delta_trans_noise;
-          double delta_rot_2_hat = delta_rot_2 - delta_rot_2_noise;
+          for (size_t i = 0; i < particles_.size(); i++) {
 
-          Particle curr_particle = particles_[i];
-          float curr_x = curr_particle.loc.x();
-          float curr_y = curr_particle.loc.y();
-          float curr_theta = curr_particle.angle;
+              double delta_rot_1_noise = rng_.Gaussian(0.0, sqrt(delta_rot_1_std_dev));
+              double delta_trans_noise = rng_.Gaussian(0.0, sqrt(delta_trans_std_dev));
+              double delta_rot_2_noise = rng_.Gaussian(0.0, sqrt(delta_rot_2_std_dev));
 
-          float new_x = curr_x + (delta_trans_hat * cos(curr_theta + delta_rot_1_hat));
-          float new_y = curr_y + (delta_trans_hat * sin(curr_theta + delta_rot_1_hat));
-          float new_theta = curr_theta + delta_rot_1_hat + delta_rot_2_hat;
+              double delta_rot_1_hat = delta_rot_1 - delta_rot_1_noise;
+              double delta_trans_hat = delta_trans - delta_trans_noise;
+              double delta_rot_2_hat = delta_rot_2 - delta_rot_2_noise;
 
-          particles_[i].angle = math_util::AngleMod(new_theta);
-          particles_[i].loc = Vector2f(new_x, new_y);
+              Particle curr_particle = particles_[i];
+              float curr_x = curr_particle.loc.x();
+              float curr_y = curr_particle.loc.y();
+              float curr_theta = curr_particle.angle;
+
+              float new_x = curr_x + (delta_trans_hat * cos(curr_theta + delta_rot_1_hat));
+              float new_y = curr_y + (delta_trans_hat * sin(curr_theta + delta_rot_1_hat));
+              float new_theta = curr_theta + delta_rot_1_hat + delta_rot_2_hat;
+
+              particles_[i].angle = math_util::AngleMod(new_theta);
+              particles_[i].loc = Vector2f(new_x, new_y);
+          }
       }
   }
 

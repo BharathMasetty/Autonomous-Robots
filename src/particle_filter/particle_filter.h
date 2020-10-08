@@ -168,7 +168,7 @@ class ParticleFilter {
   /**
    * Default number of particles.
    */
-  const int kDefaultNumParticles = 100;
+  const int kDefaultNumParticles = 50;
 
   /**
    * Default value for the standard deviation to use when setting the x component of the initial particles.
@@ -188,22 +188,22 @@ class ParticleFilter {
   /**
    * Default value for the first motion model parameter (used in standard deviation of rotation).
    */
-  const double kDefaultMotionModelAlpha1 = 0.01;
+  const double kDefaultMotionModelAlpha1 = 0.05;
 
   /**
    * Default value for the second motion model parameter (used in standard deviation of rotation).
    */
-  const double kDefaultMotionModelAlpha2 = 0.01;
+  const double kDefaultMotionModelAlpha2 = 0.05;
 
   /**
    * Default value for the third motion model parameter (used in standard deviation of translation).
    */
-  const double kDefaultMotionModelAlpha3 = 0.01;
+  const double kDefaultMotionModelAlpha3 = 0.05;
 
   /**
    * Default value for the fourth motion model parameter (used in standard deviation of translation).
    */
-  const double kDefaultMotionModelAlpha4 = 0.01;
+  const double kDefaultMotionModelAlpha4 = 0.05;
 
   // List of particles being tracked.
   std::vector<Particle> particles_;
@@ -265,7 +265,7 @@ class ParticleFilter {
   /**
    * Squared standard deviation of the observation model
    */
-  const float kDefaultSquaredLaserStdDev = 0.1;
+  const float kDefaultSquaredLaserStdDev = 0.5;
   float squared_laser_stddev_;
 
   /**
@@ -310,6 +310,11 @@ class ParticleFilter {
    */
    const float kDefaultObsD = 0.10; 
    float obs_d_;
+
+   /**
+    * Number of laser points used is 1 / this variable.
+    */
+   int laser_scan_keep_ratio_ = 3.0;
   
    /**
     * Distance travelled from last update step
@@ -325,7 +330,7 @@ class ParticleFilter {
     * K = Number of update steps before resampling 
     * setting to a default value of 10
     */
-   const int kDefaultObsK = 10;
+   const int kDefaultObsK = 5;
    int obs_k_;
    /**
     * Pointer to  keep track of the best weight particle after the latest update step
