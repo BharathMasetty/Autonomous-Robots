@@ -206,19 +206,23 @@ void ParticleFilter::Update(const vector<float>& ranges,
 }
 
 void ParticleFilter::Resample(const std::vector<double>& normWeightProbs) {
+
+    double weight_sum = 0;
+
   // Initialize the D for calculating range
   std::vector<double> particles_weight_new;
   particles_weight_new.reserve(particles_.size());   //creating an empty array for calculating Weight*D
   std::vector<Particle> new_particles = {};                 //initialising a vector for particles
   double prev_particle_range_upper_bound = 0;
   for (size_t i = 0; i < particles_.size(); i++) {
+      weight_sum += normWeightProbs[i];
       particles_weight_new[i] = normWeightProbs[i] + prev_particle_range_upper_bound;
       prev_particle_range_upper_bound = particles_weight_new[i];
   }
 
   //this loop will run for the given number of particles for resampling with unweighing
   for (size_t i =0; i<particles_.size(); i++) {
-      float x = rng_.UniformRandom(0, 1);               //uniform random number generator
+      float x = rng_.UniformRandom(0, weight_sum);               //uniform random number generator
       for (size_t j = 0; j < particles_.size(); j++) {
           if (x < particles_weight_new[j]) {
               new_particles.push_back(particles_[j]);
@@ -226,10 +230,11 @@ void ParticleFilter::Resample(const std::vector<double>& normWeightProbs) {
           }
       }
   }
+
   particles_ = new_particles;
   //initialize all particle weights to be 1/N
   for (size_t i = 0; i<particles_.size(); i++){
-      particles_[i].weight = log(1/num_particles_);
+      particles_[i].weight = log(1.0 /num_particles_);
   }
 }
 
@@ -273,10 +278,9 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
 
             //Normalize Log probs
             std::vector<double> normalizedProbWeights;
-            double bestWeightProb = std::exp(particles_[bestParticleIndex].weight);
             for (size_t i=0; i<= particles_.size(); i++) {
-                double prob = std::exp(particles_[i].weight);
-                normalizedProbWeights.push_back(prob/bestWeightProb);
+                double relative_log_prob = particles_[i].weight - particles_[bestParticleIndex].weight;
+                normalizedProbWeights.push_back(std::exp(relative_log_prob));
             }
 
             //Resample
@@ -305,6 +309,7 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
       double delta_rot_1 = atan2(curr_odom_y - prev_odom_y, curr_odom_x - prev_odom_x) - prev_odom_angle_;
       double delta_trans = (odom_loc - prev_odom_loc_).norm();
       double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
+
 
       // Keeping track of distance travelled since last update call
       dispFromLastUpdate_ += delta_trans;
@@ -350,8 +355,7 @@ void ParticleFilter::Initialize(const string& map_file,
                                 const Vector2f& loc,
                                 const float angle) {
   // The "set_pose" button on the GUI was clicked, or an initialization message
-  // was received from the log. Initialg
-  // ize the particles accordingly, e.g. with
+  // was received from the log. Initialize the particles accordingly, e.g. with
   // some distribution around the provided location and angle.
 
   map_.Load("maps/" + map_file + ".txt");

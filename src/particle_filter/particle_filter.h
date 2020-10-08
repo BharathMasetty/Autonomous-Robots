@@ -188,22 +188,22 @@ class ParticleFilter {
   /**
    * Default value for the first motion model parameter (used in standard deviation of rotation).
    */
-  const double kDefaultMotionModelAlpha1 = 0.1;
+  const double kDefaultMotionModelAlpha1 = 0.01;
 
   /**
    * Default value for the second motion model parameter (used in standard deviation of rotation).
    */
-  const double kDefaultMotionModelAlpha2 = 0.1;
+  const double kDefaultMotionModelAlpha2 = 0.01;
 
   /**
    * Default value for the third motion model parameter (used in standard deviation of translation).
    */
-  const double kDefaultMotionModelAlpha3 = 0.1;
+  const double kDefaultMotionModelAlpha3 = 0.01;
 
   /**
    * Default value for the fourth motion model parameter (used in standard deviation of translation).
    */
-  const double kDefaultMotionModelAlpha4 = 0.1;
+  const double kDefaultMotionModelAlpha4 = 0.01;
 
   // List of particles being tracked.
   std::vector<Particle> particles_;
@@ -265,7 +265,7 @@ class ParticleFilter {
   /**
    * Squared standard deviation of the observation model
    */
-  const float kDefaultSquaredLaserStdDev = 1.0; 
+  const float kDefaultSquaredLaserStdDev = 0.1;
   float squared_laser_stddev_;
 
   /**
