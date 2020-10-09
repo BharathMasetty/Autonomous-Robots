@@ -110,7 +110,7 @@ void PublishParticles() {
 }
 
 void PublishPredictedScan() {
-  const uint32_t kColor = 0x34b4eb;
+  const uint32_t kColor = 0x34eb4c;
   Vector2f robot_loc(0, 0);
   float robot_angle(0);
   particle_filter_->GetLocation(&robot_loc, &robot_angle);

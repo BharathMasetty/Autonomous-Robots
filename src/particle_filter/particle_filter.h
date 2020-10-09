@@ -187,23 +187,27 @@ class ParticleFilter {
 
   /**
    * Default value for the first motion model parameter (used in standard deviation of rotation).
+   * error in rot because of rot
    */
   const double kDefaultMotionModelAlpha1 = 0.05;
 
   /**
    * Default value for the second motion model parameter (used in standard deviation of rotation).
+   * error in rot because of trans
    */
-  const double kDefaultMotionModelAlpha2 = 0.05;
+  const double kDefaultMotionModelAlpha2 = 0.02;
 
   /**
    * Default value for the third motion model parameter (used in standard deviation of translation).
+   * error in trans because of trans
    */
   const double kDefaultMotionModelAlpha3 = 0.05;
 
   /**
-   * Default value for the fourth motion model parameter (used in standard deviation of translation).
+   * Default value for the fourth motion model parameter (used in standard deviation of translation)
+   * error in trans because of rot
    */
-  const double kDefaultMotionModelAlpha4 = 0.05;
+  const double kDefaultMotionModelAlpha4 = 0.01;
 
   // List of particles being tracked.
   std::vector<Particle> particles_;
@@ -259,13 +263,13 @@ class ParticleFilter {
    * gamma = 1 => No correlation among cloud points.
    * gamma = 1/n where n is number of cloud points => Full correlation.
    */
-  const double kDefaultGamma = 1; 
+  const double kDefaultGamma = 0.001;
   double gamma_;
 
   /**
    * Squared standard deviation of the observation model
    */
-  const float kDefaultSquaredLaserStdDev = 0.5;
+  const float kDefaultSquaredLaserStdDev = 0.05;
   float squared_laser_stddev_;
 
   /**
@@ -308,7 +312,7 @@ class ParticleFilter {
    * D = distance the car has to travel between two update steps 
    * Setting it to a default value of 10 cm
    */
-   const float kDefaultObsD = 0.10; 
+   const float kDefaultObsD = 0.10;
    float obs_d_;
 
    /**
