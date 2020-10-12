@@ -91,8 +91,8 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     ROS_INFO_STREAM("Distance Between two update calls : " << obs_d_);
     ROS_INFO_STREAM("Updates between two resample calls: "<< obs_k_);
 
-    d_short_log_prob_ = -squared_d_short_ / squared_laser_stddev_;
     squared_d_short_ = std::pow(d_short_, 2);
+    d_short_log_prob_ = -squared_d_short_ / squared_laser_stddev_;
     squared_d_long_ = std::pow(d_long_, 2);
     d_long_log_prob_ = -squared_d_long_/squared_laser_stddev_;
 
