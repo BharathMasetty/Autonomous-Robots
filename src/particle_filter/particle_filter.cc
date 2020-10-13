@@ -57,20 +57,29 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     prev_odom_loc_(0, 0),
     prev_odom_angle_(0),
     odom_initialized_(false) {
-    
+
+    loadParams(n);
+
+    dispFromLastUpdate_ = 0;
+    lastUpdateBestParticleIndex_ = -1;
+}
+
+void ParticleFilter::loadParams(ros::NodeHandle *n) {
+    ROS_INFO_STREAM("Reloading parameters");
+
     // Initialization Parameters
     n->param(kNumParticlesParamName, num_particles_, kDefaultNumParticles);
     n->param(kInitialXStdDevParamName, initial_x_stddev_, kDefaultInitialXStdDev);
     n->param(kInitialYStdDevParamName, initial_y_stddev_, kDefaultInitialYStdDev);
     n->param(kInitialThetaStdDevParamName, initial_theta_stddev_, kDefaultInitialThetaStdDev);
-    
-    // Motion model parameters 
+
+    // Motion model parameters
     n->param(kMotionModelAlpha1ParamName, motion_model_alpha_1_, kDefaultMotionModelAlpha1);
     n->param(kMotionModelAlpha2ParamName, motion_model_alpha_2_, kDefaultMotionModelAlpha2);
     n->param(kMotionModelAlpha3ParamName, motion_model_alpha_3_, kDefaultMotionModelAlpha3);
     n->param(kMotionModelAlpha4ParamName, motion_model_alpha_4_, kDefaultMotionModelAlpha4);
-    
-    // Observation Model Parameters 
+
+    // Observation Model Parameters
     n->param(kObsGammaParamName, gamma_, kDefaultGamma);
     n->param(kObsStdDevSquaredParamName, squared_laser_stddev_, kDefaultSquaredLaserStdDev);
     n->param(kObsDshortParamName, d_short_, kDefaultDshort);
@@ -82,9 +91,9 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
 
     ROS_INFO_STREAM("Number of particles: " << num_particles_);
     ROS_INFO_STREAM("Std dev for initial pose x, y, and theta " << initial_x_stddev_ << ", " << initial_y_stddev_
-            << ", " << initial_theta_stddev_);
+                                                                << ", " << initial_theta_stddev_);
     ROS_INFO_STREAM("Motion model parameters (1-4): " << motion_model_alpha_1_ << ", " << motion_model_alpha_2_
-            << ", " << motion_model_alpha_3_ << ", " << motion_model_alpha_4_);
+                                                      << ", " << motion_model_alpha_3_ << ", " << motion_model_alpha_4_);
     ROS_INFO_STREAM("Observation Model Parameters: gamma: " << gamma_ << " square stddev-obs liklihood: " << squared_laser_stddev_);
     ROS_INFO_STREAM("Distance Between two update calls : " << obs_d_);
     ROS_INFO_STREAM("Updates between two resample calls: "<< obs_k_);
@@ -93,9 +102,6 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     d_short_log_prob_ = -squared_d_short_ / squared_laser_stddev_;
     squared_d_long_ = std::pow(d_long_, 2);
     d_long_log_prob_ = -squared_d_long_/squared_laser_stddev_;
-
-    dispFromLastUpdate_ = 0;
-    lastUpdateBestParticleIndex_ = -1;
 }
 
 void ParticleFilter::GetParticles(vector<Particle>* particles) const {

@@ -37,6 +37,7 @@
 #include "geometry_msgs/PoseArray.h"
 #include "sensor_msgs/LaserScan.h"
 #include "nav_msgs/Odometry.h"
+#include "std_msgs/Empty.h"
 #include "ros/ros.h"
 #include "rosbag/bag.h"
 #include "rosbag/view.h"
@@ -84,6 +85,7 @@ CONFIG_FLOAT(init_r_, "init_r");
 config_reader::ConfigReader config_reader_({"config/particle_filter.lua"});
 
 bool run_ = true;
+ros::NodeHandle *n_;
 particle_filter::ParticleFilter* particle_filter_ = nullptr;
 ros::Publisher visualization_publisher_;
 ros::Publisher localization_publisher_;
@@ -216,6 +218,10 @@ void InitCallback(const amrl_msgs::Localization2DMsg& msg) {
   trajectory_points_.clear();
 }
 
+void ReloadParamsCallback(const std_msgs::Empty &msg) {
+    particle_filter_->loadParams(n_);
+}
+
 void ProcessLive(ros::NodeHandle* n) {
   ros::Subscriber initial_pose_sub = n->subscribe(
       FLAGS_init_topic.c_str(),
@@ -229,6 +235,10 @@ void ProcessLive(ros::NodeHandle* n) {
       FLAGS_odom_topic.c_str(),
       1,
       OdometryCallback);
+  ros::Subscriber reload_params_sub = n->subscribe(
+          "/reload_params",
+          1,
+          ReloadParamsCallback);
   while (ros::ok() && run_) {
     ros::spinOnce();
     PublishVisualization();
@@ -251,6 +261,7 @@ int main(int argc, char** argv) {
   // Initialize ROS.
   ros::init(argc, argv, "particle_filter", ros::init_options::NoSigintHandler);
   ros::NodeHandle n;
+  n_ = &n;
   particle_filter_ = new particle_filter::ParticleFilter(&n);
 
   InitializeMsgs();
