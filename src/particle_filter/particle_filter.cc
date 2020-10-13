@@ -75,8 +75,6 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
     n->param(kObsStdDevSquaredParamName, squared_laser_stddev_, kDefaultSquaredLaserStdDev);
     n->param(kObsDshortParamName, d_short_, kDefaultDshort);
     n->param(kObsDlongParamName, d_long_, kDefaultDlong);
-    n->param(kObsSminParamName, s_min_, kDefaultSmin);
-    n->param(kObsSmaxParamName, s_max_, kDefaultSmax);
     n->param(kObsDParamName, obs_d_, kDefaultObsD);
     n->param(kObsKParamName, obs_k_, kDefaultObsK);
 
@@ -98,7 +96,6 @@ ParticleFilter::ParticleFilter(ros::NodeHandle* n) :
 
     dispFromLastUpdate_ = 0;
     lastUpdateBestParticleIndex_ = -1;
-    justResampled_ = false;
 }
 
 void ParticleFilter::GetParticles(vector<Particle>* particles) const {
@@ -188,24 +185,18 @@ void ParticleFilter::Update(const vector<float>& ranges,
       float diff = predictedRanges[i] - ranges[i];
       float squaredDiff = std::pow(diff, 2);
 
-      // Simple Observation Model
-      currObservationLogProb += -squaredDiff/squared_laser_stddev_;
-
-     /*
-      // Robust Model here --- Switch to this if needed
-      // NOTE: This might need more tuning  efforst becasue of 4 extra parameters
-      if(diff < -s_min_ || diff > s_max_){
-          currObservationLogProb += -std::numeric_limits<double>::infinity();
-      }else if(diff < -d_short_){
+      if ((ranges[i] < range_min) || (ranges[i] > range_max)) {
+          // Note: while this should be impossible (probability = 0), not going to change
+          // the probability because then every single particle will have 0 probability. Instead, just ignoring this
+          // laser reading
+          ROS_ERROR_STREAM("Impossible reading: " << ranges[i]);
+      } else if (ranges[i] < (predictedRanges[i] - d_short_)) {
           currObservationLogProb += d_short_log_prob_;
-      }
-      else if(diff > d_long_){
+      } else if (ranges[i] > (predictedRanges[i] + d_long_)) {
           currObservationLogProb += d_long_log_prob_;
-      }
-      else {
+      } else {
           currObservationLogProb += -squaredDiff/squared_laser_stddev_;
-      }*/
-
+      }
   }
   
   // accounting for correlation in the joint probability
@@ -273,11 +264,9 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
       * 3) Check resampling
       * 4) Resample if needed  -- This resets the particle weights
       */
-    
-     // This should always be false and only set true when enters resampling
-     justResampled_ = false;
+
      int bestParticleIndex = 0;
-       double bestWeight = -std::numeric_limits<double>::infinity();
+     double bestWeight = -std::numeric_limits<double>::infinity();
 
      // Checking if we want to update or not
      if (dispFromLastUpdate_ >= obs_d_) {
@@ -307,7 +296,6 @@ void ParticleFilter::ObserveLaser(const vector<float>& ranges,
 
             //Resample
             Resample(normalizedProbWeights);
-            justResampled_ = true;
             numUpdatesFromLastResample_ = 0;
         }
      }
