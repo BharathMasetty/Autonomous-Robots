@@ -149,14 +149,6 @@ class ParticleFilter {
   */
  const std::string kObsDlongParamName = "observation_d_long";
  /**
-  *ROS paramter name for s_min in observation model
-  */
- const std::string kObsSminParamName = "observation_s_min";
- /**
-  *ROS parameter name for s_max in observation model
-  */
-  const std::string kObsSmaxParamName = "observation_s_max";
- /**
   * ROS parameter name for D - distance between 2 update calls
   */
   const std::string kObsDParamName = "observation_d";
@@ -174,7 +166,7 @@ class ParticleFilter {
   /**
    * Default number of particles.
    */
-  const int kDefaultNumParticles = 50;
+  const int kDefaultNumParticles = 75;
 
   /**
    * Default value for the standard deviation to use when setting the x component of the initial particles.
@@ -189,37 +181,37 @@ class ParticleFilter {
   /**
    * Default value for the standard deviation to use when setting the theta component of the initial particles.
    */
-  const double kDefaultInitialThetaStdDev = 0.3;
+  const double kDefaultInitialThetaStdDev = 0.4;
 
   /**
    * Default value for the first motion model parameter (used in standard deviation of rotation).
    * error in rot because of rot
    */
-  const double kDefaultMotionModelAlpha1 = 0.05;
+  const double kDefaultMotionModelAlpha1 = 0.2;
 
   /**
    * Default value for the second motion model parameter (used in standard deviation of rotation).
    * error in rot because of trans
    */
-  const double kDefaultMotionModelAlpha2 = 0.02;
+  const double kDefaultMotionModelAlpha2 = 0.2;
 
   /**
    * Default value for the third motion model parameter (used in standard deviation of translation).
    * error in trans because of trans
    */
-  const double kDefaultMotionModelAlpha3 = 0.05;
+  const double kDefaultMotionModelAlpha3 = 0.06;
 
   /**
    * Default value for the fourth motion model parameter (used in standard deviation of translation)
    * error in trans because of rot
    */
-  const double kDefaultMotionModelAlpha4 = 0.01;
+  const double kDefaultMotionModelAlpha4 = 0.00005;
 
   /**
    * Default value of the distance that a particle can be (at most) from the maximum weight particle to be included in
    * the weighted average used to get the localization estimate.
    */
-  const double kDefaultGetLocAveragingDist = 0.25;
+  const double kDefaultGetLocAveragingDist = 0.5;
 
   // List of particles being tracked.
   std::vector<Particle> particles_;
@@ -272,13 +264,13 @@ class ParticleFilter {
   /**
    * Squared standard deviation of the observation model
    */
-  const float kDefaultSquaredLaserStdDev = 0.05;
+  const float kDefaultSquaredLaserStdDev = 0.1;
   float squared_laser_stddev_;
 
   /**
    * Squared d_short for robust observation likelihood
    */ 
-  const float kDefaultDshort = 0.3;
+  const float kDefaultDshort = 1.0;
   float d_short_;
   float squared_d_short_;
 
@@ -290,7 +282,7 @@ class ParticleFilter {
   /**
    * Squared d_long for robust observation liklihood
    */ 
-  const float kDefaultDlong = 0.3;
+  const float kDefaultDlong = 2.0;
   float d_long_;
   float squared_d_long_;
   
@@ -298,30 +290,18 @@ class ParticleFilter {
    * Fixed Obs Probability for d_long
    */
   float d_long_log_prob_;
-  
- /**
-  * s_min for normalizing  Observation liklihood model (for making area under pdf = 1)
-  */  
-  float s_min_;
-  const float kDefaultSmin = 1.0;
-  
-  /**
-   * s_max for normalizing observation liklihood model (for making aread under pdf = 1)
-   */
-  float s_max_;
-  const float kDefaultSmax = 1.0;
-  
+
   /**
    * D = distance the car has to travel between two update steps 
    * Setting it to a default value of 10 cm
    */
-   const float kDefaultObsD = 0.10;
+   const float kDefaultObsD = 0.05;
    float obs_d_;
 
    /**
     * Number of laser points used is 1 / this variable.
     */
-   int laser_scan_keep_ratio_ = 3.0;
+   int laser_scan_keep_ratio_ = 10.0;
   
    /**
     * Distance travelled from last update step
@@ -334,22 +314,14 @@ class ParticleFilter {
    int numUpdatesFromLastResample_;
    
    /**
-    * K = Number of update steps before resampling 
-    * setting to a default value of 10
+    * K = Number of update steps before resampling
     */
-   const int kDefaultObsK = 5;
+   const int kDefaultObsK = 3;
    int obs_k_;
    /**
     * Pointer to  keep track of the best weight particle after the latest update step
     */
    int lastUpdateBestParticleIndex_;
-
-   /**
-    * Boolean to indicate if the the resampling was done in last laser call back
-    * Will be used in GetLocation to choose previous best particle since the weights 
-    * will be reset after resampling.
-    */
-   bool justResampled_;
 
   /**
    * First motion model parameter (used in standard deviation of rotation).
