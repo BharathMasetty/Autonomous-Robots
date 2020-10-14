@@ -88,6 +88,13 @@ class ParticleFilter {
                               std::vector<Eigen::Vector2f>* scan,
                               std::vector<float>* ranges);
 
+  /**
+   * Reload the parameters.
+   *
+   * @param n Node handle.
+   */
+  void loadParams(ros::NodeHandle *n);
+
  private:
 
   /**

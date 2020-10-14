@@ -27,7 +27,7 @@ MESSAGE(STATUS "CXX Flags: ${CMAKE_CXX_FLAGS}")
 SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
-SET(libs roslib roscpp rosbag glog gflags amrl-shared-lib boost_system lua5.1
+SET(libs roslib roscpp rosbag glog gflags amrl-shared-lib boost_system boost_thread lua5.1
     pthread)
 
 ADD_LIBRARY(shared_library
@@ -53,6 +53,10 @@ ROSBUILD_ADD_EXECUTABLE(navigation
                         src/navigation/navigation_main.cc
                         src/navigation/navigation.cc)
 TARGET_LINK_LIBRARIES(navigation shared_library ${libs})
+
+ROSBUILD_ADD_EXECUTABLE(parameter_evaluator
+        src/particle_filter/param_evaluator.cc)
+TARGET_LINK_LIBRARIES(parameter_evaluator shared_library ${libs})
 
 ADD_EXECUTABLE(eigen_tutorial
                src/eigen_tutorial.cc)
