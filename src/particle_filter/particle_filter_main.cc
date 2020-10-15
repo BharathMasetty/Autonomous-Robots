@@ -128,8 +128,12 @@ void PublishPredictedScan() {
       last_laser_msg_.angle_max,
       &predicted_scan,
       &predicted_ranges);
+  int counter = 0;
   for (const Vector2f& p : predicted_scan) {
-    DrawPoint(p, kColor, vis_msg_);
+      if (counter % particle_filter_->getScanReductionIncrement() == 0) {
+          DrawPoint(p, kColor, vis_msg_);
+      }
+      counter++;
   }
 }
 

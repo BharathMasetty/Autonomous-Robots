@@ -95,6 +95,13 @@ class ParticleFilter {
    */
   void loadParams(ros::NodeHandle *n);
 
+  /**
+   * Get the number indicating the number of laser scan values to use.
+   *
+   * @return N, where 1 in every N laser scan readings is used to predict the point cloud.
+   */
+  int getScanReductionIncrement();
+
  private:
 
   /**

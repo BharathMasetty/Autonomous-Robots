@@ -172,6 +172,10 @@ void ParticleFilter::GetPredictedPointCloud(const Vector2f& loc,
   }
 }
 
+int ParticleFilter::getScanReductionIncrement() {
+    return laser_scan_keep_ratio_;
+}
+
 void ParticleFilter::Update(const vector<float>& ranges,
                             float range_min,
                             float range_max,
@@ -187,7 +191,6 @@ void ParticleFilter::Update(const vector<float>& ranges,
   
   float currObservationLogProb = 0; 
   for (int i = 0; i < num_ranges; i+= laser_scan_keep_ratio_){
-      //std::cout << "RangeNum: " << i << " pred range " << predictedRanges[i] << " actual range " << ranges[i] << std::endl;
       float diff = predictedRanges[i] - ranges[i];
       float squaredDiff = std::pow(diff, 2);
 
