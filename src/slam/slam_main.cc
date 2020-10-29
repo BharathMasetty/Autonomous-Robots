@@ -73,7 +73,7 @@ DEFINE_string(odom_topic, "/odom", "Name of ROS topic for odometry data");
 DECLARE_int32(v);
 
 bool run_ = true;
-slam::SLAM slam_;
+slam::SLAM *slam_;
 ros::Publisher visualization_publisher_;
 ros::Publisher localization_publisher_;
 VisualizationMsg vis_msg_;
@@ -97,7 +97,7 @@ void PublishMap() {
   vis_msg_.header.stamp = ros::Time::now();
   ClearVisualizationMsg(vis_msg_);
 
-  const vector<Vector2f> map = slam_.GetMap();
+  const vector<Vector2f> map = slam_->GetMap();
   printf("Map: %lu points\n", map.size());
   for (const Vector2f& p : map) {
     visualization::DrawPoint(p, 0xC0C0C0, vis_msg_);
@@ -108,7 +108,7 @@ void PublishMap() {
 void PublishPose() {
   Vector2f robot_loc(0, 0);
   float robot_angle(0);
-  slam_.GetPose(&robot_loc, &robot_angle);
+  slam_->GetPose(&robot_loc, &robot_angle);
   amrl_msgs::Localization2DMsg localization_msg;
   localization_msg.pose.x = robot_loc.x();
   localization_msg.pose.y = robot_loc.y();
@@ -121,7 +121,7 @@ void LaserCallback(const sensor_msgs::LaserScan& msg) {
     printf("Laser t=%f\n", msg.header.stamp.toSec());
   }
   last_laser_msg_ = msg;
-  slam_.ObserveLaser(
+  slam_->ObserveLaser(
       msg.ranges,
       msg.range_min,
       msg.range_max,
@@ -138,7 +138,7 @@ void OdometryCallback(const nav_msgs::Odometry& msg) {
   const Vector2f odom_loc(msg.pose.pose.position.x, msg.pose.pose.position.y);
   const float odom_angle =
       2.0 * atan2(msg.pose.pose.orientation.z, msg.pose.pose.orientation.w);
-  slam_.ObserveOdometry(odom_loc, odom_angle);
+  slam_->ObserveOdometry(odom_loc, odom_angle);
 }
 
 
@@ -148,6 +148,7 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "slam");
   ros::NodeHandle n;
   InitializeMsgs();
+  slam_ = new slam::SLAM(&n);
 
   visualization_publisher_ =
       n.advertise<VisualizationMsg>("visualization", 1);
@@ -163,6 +164,8 @@ int main(int argc, char** argv) {
       1,
       OdometryCallback);
   ros::spin();
+
+  delete slam_;
 
   return 0;
 }
