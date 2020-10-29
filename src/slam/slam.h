@@ -48,7 +48,12 @@ namespace slam {
         /**
          * Log probability of the relative pose.
          */
-        double log_probability_;
+        double obs_log_probability_;
+
+	/**
+	 * Motion model log probability of the relatve pose
+	 */
+	double motion_log_probability_;
     };
 
 class SLAM {
@@ -267,6 +272,10 @@ class SLAM {
     float motion_model_transl_error_from_transl_;
     float motion_model_rot_error_from_rot_;
     float motion_model_rot_error_from_transl_;
+	
+    //Translation and Rotation Standard deviation
+    float trans_std_dev_squared_;
+    float rot_std_dev_squared_;
 
     // Previous odometry-reported locations.
     Eigen::Vector2f prev_odom_loc_;
@@ -314,6 +323,11 @@ class SLAM {
      * Most recently considered scan (taken at the last entry in robot_trajectory_).
      */
     std::vector<Eigen::Vector2f> most_recent_used_scan_;
+
+    /**
+     * Trajectory Estimates with respect to odom frame
+     */
+    std::vector<std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f>> trajectory_estimates_;
 
     /**
      * Determine if the robot has moved far enough that we should compare the last used laser scan to the current laser
@@ -378,18 +392,24 @@ class SLAM {
      * Compute the log probability for each possible translation given by the possible x and y offsets based on
      * alignment between the rasterized scan and the rotated scan centered at relative to the robot's current position.
      *
-     * @param rotated_current_scan[in]  Rotated laser scan relative to the robot's current position.
-     * @param angle[in]                 Angle that the scan was rotated. This is only used to store the results,
-     *                                  since the scan was already rotated.
-     * @param possible_x_offsets[in]    Possible X components of the relative pose to evaluate.
-     * @param possible_y_offsets[in]    Possible Y components of the relative pose to evaluate
-     * @param log_prob_results[out]     Results from the scan comparison for each of the points. This will be
-     *                                  aggregated across several calls to this function with different rotations, so
-     *                                  this value should only be added to (not cleared or deleted).
+     * @param rotated_current_scan[in]      Rotated laser scan relative to the robot's current position.
+     * @param angle[in]                     Angle that the scan was rotated. This is only used to store the results,
+     *                                      since the scan was already rotated.
+     * @param possible_x_offsets[in]        Possible X components of the relative pose to evaluate.
+     * @param possible_y_offsets[in]        Possible Y components of the relative pose to evaluate
+     * @param odom_position_offset[in]      Position difference since last scan estimated by odometry (should search
+     *                                      centered around this position).
+     * @param odom_angle_offset[in]         Angular difference since last scan estimated by odometry (should search
+     *                                      centered around this rotation).
+
+     * @param log_prob_results[out]         Results from the scan comparison for each of the points. This will be
+     *                                      aggregated across several calls to this function with different rotations, so
+     *                                      this value should only be added to (not cleared or deleted).
      */
     void computeLogProbsForRotatedScans(const std::vector<Eigen::Vector2f> &rotated_current_scan, const float &angle,
                                         const std::vector<float> &possible_x_offsets,
                                         const std::vector<float> &possible_y_offsets,
+					const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
                                         std::vector<RelativePoseResults> &log_prob_results);
 
     /**
@@ -399,11 +419,44 @@ class SLAM {
      * @param position_offset       Position offset between robot pose for raster and current robot pose that should be
      *                              evaluated.
      *
+     *
      * @return Log probability of the position offset between the robot pose for the raster and the current robot pose
      * (after the scan was rotated).
      */
     double computeLogProbForRelativePose(const std::vector<Eigen::Vector2f> &rotated_current_scan,
                                          const Eigen::Vector2f &position_offset);
+    /**
+     * Compute the Motion Model likelihood for a given relative pose
+     * @param position_offset 	    	    Position offset between robot pose for raster and current robot pose that should be evaluated.
+     * 
+     * @param angle_offset  	    	    Angle offset between robot pose for raster and current robot pose that should be evaluated.
+     *
+     * @param odom_position_offset[in]      Position difference since last scan estimated by odometry (should search
+     *                                      centered around this position).
+     * 
+     * @param odom_angle_offset[in]         Angular difference since last scan estimated by odometry (should search
+     *                                      centered around this rotation).
+     *
+     */
+    double computeMotionLogProbForRelativePose(const Eigen::Vector2f &position_offset,  const float &angle_offset,
+		    				const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset);
+
+    /**
+     * Compute the estimate of the pose and covariance as described in CSM paper
+     * 
+     * @param poses_with_likelihood Vector of RelativePoseResults with computed probabilities
+     *
+     * @return ((E(loc), E(angle)), Covariance)
+     */
+    std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> computeMeanPoseAndCovariance(const std::vector<RelativePoseResults> &poses_with_likelihood);
+    
+    /**
+     * Add the latest MLE estimate of the robot location and angle with respect to odom origin to trajectory_estimates_ vector
+     *
+     * @param ((E(loc), E(angle)), Covariance)
+     * @param (MLE(loc), MLE(anlge))
+     */
+    void updateTrajectoryEstimates(const std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> &nextBestPoseAndCov, const std::pair<Eigen::Vector2f, float> &MLEPoseAndAngleOffset);
 };
 }  // namespace slam
 
