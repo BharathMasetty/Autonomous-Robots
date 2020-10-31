@@ -164,7 +164,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalTranslIncrement = 0.1;
+    const float kDefaultPoseEvalTranslIncrement = 0.05;
 
     /**
      * Default value for the resolution of the pose search cube in the rotation dimension.
@@ -174,7 +174,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(5);
+    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(1.0);
 
     /**
      * ROS Parameter name for how many standard deviations (on each side of odom pose) we should compute likelihoods
@@ -205,8 +205,8 @@ class SLAM {
      */
     const float kDefaultMotionModelTranslErrorFromRot = 0.00005;
     const float kDefaultMotionModelTranslErrorFromTransl = 0.06;
-    const float kDefaultMotionModelRotErrorFromRot = 0.2;
-    const float kDefaultMotionModelRotErrorFromTransl = 0.2;
+    const float kDefaultMotionModelRotErrorFromRot = 0.05;
+    const float kDefaultMotionModelRotErrorFromTransl = 0.05;
 
     /**
      * Laser variance (squared std dev).
@@ -344,10 +344,13 @@ class SLAM {
      * @param ranges[in]        Range readings for the laser scan.
      * @param angle_min[in]     Minimum angle for the laser scan.
      * @param angle_max[in]     Maximum angle for the laser scan.
+     * @param range_max[in]     Maximum range for the laser scanner. Points with this value don't reflect actual
+     *                          objects, and consequently, should be filtered out of the scan used for map
+     *                          construction/scan comparison.
      * @param point_cloud[out]  Point cloud (x,y points relative to the base_link of the robot)
      */
     void convertRangesToPointCloud(const std::vector<float>& ranges, const float &angle_min, const float &angle_max,
-                                   std::vector<Eigen::Vector2f> &point_cloud);
+                                   const float &range_max, std::vector<Eigen::Vector2f> &point_cloud);
 
     /**
      * Update the variable containing the rasterized version of the reference scan.

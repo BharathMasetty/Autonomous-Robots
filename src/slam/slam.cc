@@ -98,8 +98,18 @@ void SLAM::GetPose(Eigen::Vector2f* loc, float* angle) const {
     float& angle_ = *angle;
 
     std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> locInfo = trajectory_estimates_.back();
-    loc_ = locInfo.first.first;
-    angle_ = locInfo.first.second;
+
+    // Unaccounted for odom
+    Eigen::Vector2f odom_est_loc_displ = prev_odom_loc_ - odom_loc_at_last_laser_align_;
+    float odom_est_angle_displ = math_util::AngleDiff(prev_odom_angle_, odom_angle_at_last_laser_align_);
+
+
+    Rotation2Df eig_rotation(locInfo.first.second);
+    Vector2f rotated_offset = eig_rotation * odom_est_loc_displ;
+
+    loc_ = locInfo.first.first + rotated_offset;
+    angle_ = locInfo.first.second + odom_est_angle_displ;
+    ROS_INFO_STREAM("Pose " << loc_.x() << ", " << loc_.y() << ", " << angle_);
     
     //*loc = Vector2f(0, 0);
     //*angle = 0;
@@ -108,7 +118,9 @@ void SLAM::GetPose(Eigen::Vector2f* loc, float* angle) const {
 bool SLAM::shouldProcessLaser() {
     float angle_diff = math_util::AngleDist(prev_odom_angle_, odom_angle_at_last_laser_align_);
     float loc_diff = (prev_odom_loc_ - odom_loc_at_last_laser_align_).norm();
+
     if ((loc_diff > laser_update_odom_loc_difference_) || (angle_diff > laser_update_odom_angle_difference_)) {
+        ROS_INFO_STREAM("Should process laser");
         return true;
     } else {
         return false;
@@ -116,7 +128,7 @@ bool SLAM::shouldProcessLaser() {
 }
 
 void SLAM::convertRangesToPointCloud(const vector<float>& ranges, const float &angle_min, const float &angle_max,
-                                     vector<Eigen::Vector2f> &point_cloud) {
+                                     const float &range_max, vector<Eigen::Vector2f> &point_cloud) {
 
     const int num_rays = ranges.size();
     point_cloud.clear();
@@ -124,9 +136,11 @@ void SLAM::convertRangesToPointCloud(const vector<float>& ranges, const float &a
     double angle_inc = (angle_max - angle_min) / (num_rays - 1);
     for (int i=0; i < num_rays; i++) {
         float range = ranges[i];
-        float curr_angle = angle_min + (i * angle_inc);
-        Vector2f cloud_point(range * cos(curr_angle) + kBaselinkToLaserOffsetX, range * sin(curr_angle));
-        point_cloud.push_back(cloud_point);
+        if (range < range_max) {
+            float curr_angle = angle_min + (i * angle_inc);
+            Vector2f cloud_point(range * cos(curr_angle) + kBaselinkToLaserOffsetX, range * sin(curr_angle));
+            point_cloud.push_back(cloud_point);
+        }
     }
 }
 
@@ -247,6 +261,7 @@ void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, cons
         rot_offset += pose_eval_rot_increment_;
     }
 
+
     relative_pose_results.clear();
     relative_pose_results.reserve(possible_rotations.size() * possible_x_offsets.size() * possible_y_offsets.size());
 
@@ -290,7 +305,7 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
         ROS_ERROR_STREAM("Odom not initialized. Skipping laser processing.");
 
         // TODO is this the correct way to initialize? (need to have some laser scan to use for first comparison)
-        convertRangesToPointCloud(ranges, angle_min, angle_max, most_recent_used_scan_);
+        convertRangesToPointCloud(ranges, angle_min, angle_max, range_max, most_recent_used_scan_);
         return;
     }
 
@@ -305,7 +320,7 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
 
     // Compute the point cloud relative to the robot's current position
     vector<Eigen::Vector2f> current_point_cloud;
-    convertRangesToPointCloud(ranges, angle_min, angle_max, current_point_cloud);
+    convertRangesToPointCloud(ranges, angle_min, angle_max, range_max, current_point_cloud);
 
     // Update the rasterized lookup. Will be relative to the pose of the robot at the last timestep
     updateRasterizedLookup(most_recent_used_scan_);
@@ -325,7 +340,7 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
     poseAndCovariance = computeMeanPoseAndCovariance(relative_pose_results);
     
     // Updating Trajectory Estimate
-    updateTrajectoryEstimates(poseAndCovariance, std::make_pair(maximum_likelihood_scan_offset_position, maximum_likelihood_scan_offset_angle)); 
+    updateTrajectoryEstimates(poseAndCovariance, std::make_pair(maximum_likelihood_scan_offset_position, maximum_likelihood_scan_offset_angle));
 
     // Update the fields for the next laser reading
     laser_observations_for_pose_in_trajectory_.emplace_back(current_point_cloud);
@@ -378,9 +393,11 @@ void SLAM::updateTrajectoryEstimates(const std::pair<std::pair<Eigen::Vector2f, 
 	
     std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> prevLocInfo = trajectory_estimates_.back();
     Eigen::Vector2f lastTimeStepLoc = prevLocInfo.first.first;
-    float lastTimeStepAngle = prevLocInfo.first.second;	
+    float lastTimeStepAngle = prevLocInfo.first.second;
+    Rotation2Df eig_rotation(lastTimeStepAngle);
+    Vector2f rotated_offset = eig_rotation * MLEPoseAndAngleOffset.first;
 	
-    Eigen::Vector2f latestTrajPointLoc = lastTimeStepLoc + MLEPoseAndAngleOffset.first;
+    Eigen::Vector2f latestTrajPointLoc = lastTimeStepLoc + rotated_offset;
     float latestTrajPointAngle = lastTimeStepAngle + MLEPoseAndAngleOffset.second;
     Eigen::Matrix3f latestTrajPointCov = nextBestPoseAndCov.second;
     trajectory_estimates_.push_back(std::make_pair(std::make_pair(latestTrajPointLoc, latestTrajPointAngle), latestTrajPointCov));
@@ -419,6 +436,22 @@ void SLAM::ObserveOdometry(const Vector2f& odom_loc, const float odom_angle) {
 
 vector<Vector2f> SLAM::GetMap() {
   vector<Vector2f> map;
+  for (size_t i = 0; i < laser_observations_for_pose_in_trajectory_.size(); i++) {
+      float pose_angle = trajectory_estimates_[i].first.second;
+      Vector2f loc = trajectory_estimates_[i].first.first;
+      Eigen::Matrix3f pose_mat;
+      pose_mat << cos(pose_angle), -sin(pose_angle), loc.x(),
+              sin(pose_angle),  cos(pose_angle), loc.y(),
+              0,		 0, 		   1;
+
+      vector<Vector2f> scan_at_pose = laser_observations_for_pose_in_trajectory_[i];
+      for (const Vector2f &scan_point : scan_at_pose) {
+          Eigen::Vector3f extra_entry_scan_point(scan_point.x(), scan_point.y(), 1);
+          Eigen::Vector3f extra_entry_transformed_point = pose_mat * extra_entry_scan_point;
+          Vector2f transformed_point(extra_entry_transformed_point.x(), extra_entry_transformed_point.y());
+          map.emplace_back(transformed_point);
+      }
+  }
   // Reconstruct the map as a single aligned point cloud from all saved poses
   // and their respective scans.
   return map;
