@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <amrl_msgs/VisualizationMsg.h>
 
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Geometry"
@@ -78,6 +79,8 @@ class SLAM {
   // Get latest robot pose.
   void GetPose(Eigen::Vector2f* loc, float* angle) const;
 
+  void publishTrajectory(amrl_msgs::VisualizationMsg &visualization_msg);
+
  private:
 
     /**
@@ -119,7 +122,7 @@ class SLAM {
      *
      * TODO tune this value.
      */
-    const float kDefaultLaserVariance = 0.1;
+    const float kDefaultLaserVariance = 0.05;
 
     /**
      * ROS parameter name for the resolution of the raster table.
@@ -137,7 +140,7 @@ class SLAM {
      *
      * TODO tune this value.
      */
-    const float kDefaultRasterGridIncrement = 0.05;
+    const float kDefaultRasterGridIncrement = 0.01;
 
     /**
      * Default value for the size of one side of the square containing raster results in meters. This should be a
@@ -164,7 +167,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalTranslIncrement = 0.05;
+    const float kDefaultPoseEvalTranslIncrement = 0.005;
 
     /**
      * Default value for the resolution of the pose search cube in the rotation dimension.
@@ -174,7 +177,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(1.0);
+    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(0.5);
 
     /**
      * ROS Parameter name for how many standard deviations (on each side of odom pose) we should compute likelihoods
@@ -203,10 +206,12 @@ class SLAM {
      *
      * TODO tune these
      */
-    const float kDefaultMotionModelTranslErrorFromRot = 0.00005;
-    const float kDefaultMotionModelTranslErrorFromTransl = 0.06;
-    const float kDefaultMotionModelRotErrorFromRot = 0.05;
-    const float kDefaultMotionModelRotErrorFromTransl = 0.05;
+    const float kDefaultMotionModelTranslErrorFromRot = 0.1;
+    const float kDefaultMotionModelTranslErrorFromTransl = 0.15;
+    const float kDefaultMotionModelRotErrorFromRot = 0.15;
+    const float kDefaultMotionModelRotErrorFromTransl = 0.15;
+
+    bool first_scan_ = true;
 
     /**
      * Laser variance (squared std dev).
@@ -309,6 +314,8 @@ class SLAM {
      */
     Eigen::MatrixXd raster_mat_with_log_probs_;
 
+    void publishRasterAsImage();
+
     /**
      * Laser observations for each pose in the robot trajectory.
      */
@@ -328,6 +335,8 @@ class SLAM {
      * Trajectory Estimates with respect to odom frame
      */
     std::vector<std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f>> trajectory_estimates_;
+
+    std::vector<std::pair<Eigen::Vector2f, float>> odom_only_estimates_;
 
     /**
      * Determine if the robot has moved far enough that we should compare the last used laser scan to the current laser
@@ -361,6 +370,8 @@ class SLAM {
      * @param reference_scan Reference scan to use in generating the rasterized version.
      */
     void updateRasterizedLookup(const std::vector<Eigen::Vector2f> &reference_scan);
+
+    ros::Publisher image_pub_;
 
     /**
      * Compute the maximum likelihood scan-scan transform given the results from the pose evaluation.
