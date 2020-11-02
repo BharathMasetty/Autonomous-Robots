@@ -231,8 +231,9 @@ double SLAM::computeMotionLogProbForRelativePose(const Eigen::Vector2f &position
 	double motionLogProb;
 	
 	// These three values can be pre-calculated if things seem to be running too slow.
-	float delta_rot_1 = atan2(odom_position_offset.y(), odom_position_offset.x()) - odom_angle_at_last_laser_align_;
-    	float delta_trans = odom_position_offset.norm();
+	//float delta_rot_1 = atan2(odom_position_offset.y(), odom_position_offset.x()) - odom_angle_at_last_laser_align_;
+    	float delta_rot_1 = atan2(odom_position_offset.y(), odom_position_offset.x());
+	float delta_trans = odom_position_offset.norm();
     	float delta_rot_2 = odom_angle_offset - delta_rot_1;
 
     std::pair<Vector2f, float> prev_loc_info;
@@ -242,12 +243,13 @@ double SLAM::computeMotionLogProbForRelativePose(const Eigen::Vector2f &position
         prev_loc_info = trajectory_estimates_.back().first;
     }
 	//Eigen::Vector2f lastTimeStepLoc = prevLocInfo.first.first;
-    	float lastTimeStepAngle = prev_loc_info.second;
+    	//float lastTimeStepAngle = prev_loc_info.second;
 	
 	//Eigen::Vector2f possibleCurrLoc = position_offset + lastTimeStepLoc;
 	//float possibleCurrAngle = angle_offset + lastTimeStepAngle;
 	
-	float delta_rot_1_hat = atan2(position_offset.y(), position_offset.x()) - lastTimeStepAngle;  
+	//float delta_rot_1_hat = atan2(position_offset.y(), position_offset.x()) - lastTimeStepAngle;  
+	float delta_rot_1_hat = atan2(position_offset.y(), position_offset.x());
 	float delta_trans_hat = position_offset.norm();
 	float delta_rot_2_hat =	angle_offset - delta_rot_1_hat;
 	
@@ -354,8 +356,8 @@ void SLAM::getMaximumLikelihoodScanOffset(const vector<RelativePoseResults> &rel
     double max_likelihood = -std::numeric_limits<double>::infinity();
     double totalLogLikelihood;
     for (const RelativePoseResults &pose_result : relative_pose_results) {
-//        totalLogLikelihood = pose_result.motion_log_probability_+pose_result.obs_log_probability_;
-        totalLogLikelihood = pose_result.obs_log_probability_;
+        totalLogLikelihood = pose_result.motion_log_probability_+pose_result.obs_log_probability_;
+//        totalLogLikelihood = pose_result.obs_log_probability_;
 	if (totalLogLikelihood > max_likelihood) {
             max_likelihood_position_offset = pose_result.location_offset_;
             max_likelihood_angular_offset = pose_result.rotation_offset_;
@@ -378,9 +380,9 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
         ROS_ERROR_STREAM("Odom not initialized. Skipping laser processing.");
 
         // TODO is this the correct way to initialize? (need to have some laser scan to use for first comparison)
-        odom_angle_at_last_laser_align_ = prev_odom_angle_;
-        odom_loc_at_last_laser_align_ = prev_odom_loc_;
-        convertRangesToPointCloud(ranges, angle_min, angle_max, range_max, most_recent_used_scan_);
+        //odom_angle_at_last_laser_align_ = prev_odom_angle_;
+        //odom_loc_at_last_laser_align_ = prev_odom_loc_;
+        //convertRangesToPointCloud(ranges, angle_min, angle_max, range_max, most_recent_used_scan_);
         return;
     }
 
@@ -530,7 +532,7 @@ void SLAM::updateRasterizedLookup(const vector<Vector2f> &reference_scan) {
         }
     }
 
-    publishRasterAsImage();
+	publishRasterAsImage();
 }
 
 void SLAM::ObserveOdometry(const Vector2f& odom_loc, const float odom_angle) {
@@ -563,7 +565,8 @@ vector<Vector2f> SLAM::GetMap() {
           Eigen::Vector3f extra_entry_scan_point(scan_point.x(), scan_point.y(), 1);
           Eigen::Vector3f extra_entry_transformed_point = pose_mat * extra_entry_scan_point;
           Vector2f transformed_point(extra_entry_transformed_point.x(), extra_entry_transformed_point.y());
-          map.emplace_back(transformed_point);
+	  
+	  map.emplace_back(transformed_point);
       }
   }
   // Reconstruct the map as a single aligned point cloud from all saved poses

@@ -191,7 +191,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseSearchStdDevMultiplier = 2.0;
+    const float kDefaultPoseSearchStdDevMultiplier = 2.5;
 
     /**
      * ROS Parameter names for the motion model std dev scale factors.
