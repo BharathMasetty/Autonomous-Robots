@@ -331,6 +331,8 @@ void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, cons
         rot_offset += pose_eval_rot_increment_;
     }
 
+    ROS_INFO_STREAM("Rotation min, max " << possible_rotations.front() << ", " << possible_rotations.back());
+
     relative_pose_results.clear();
     size_t reserve_size = possible_rotations.size() * possible_y_offsets.size() * possible_x_offsets.size();
     relative_pose_results.reserve(reserve_size);
