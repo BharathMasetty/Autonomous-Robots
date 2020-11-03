@@ -177,7 +177,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(0.5);
+    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(1.0);
 
     /**
      * ROS Parameter name for how many standard deviations (on each side of odom pose) we should compute likelihoods
@@ -208,7 +208,7 @@ class SLAM {
      */
     const float kDefaultMotionModelTranslErrorFromRot = 0.2; // was 0.15
     const float kDefaultMotionModelTranslErrorFromTransl = 0.15;
-    const float kDefaultMotionModelRotErrorFromRot = 0.4; // was 0.2
+    const float kDefaultMotionModelRotErrorFromRot = 0.2; // was 0.2
     const float kDefaultMotionModelRotErrorFromTransl = 0.2; // was 0.15
 
     bool first_scan_ = true;
