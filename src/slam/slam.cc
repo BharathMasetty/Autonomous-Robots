@@ -350,7 +350,7 @@ void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, cons
     // Iterate over the angles in the outermost loop so that we can rotate the scans only once for each angle
     for (const float &rot_angle : possible_rotations) {
 //        ROS_INFO_STREAM("Iterating for rotation " << rot_angle);
-        Rotation2Df eig_rotation(rot_angle); // TODO does this need to be negated?
+        Rotation2Df eig_rotation(rot_angle);
         vector<Vector2f> rotated_scan;
         rotated_scan.reserve(current_scan.size());
         for (const Vector2f &point : current_scan) {
@@ -520,12 +520,15 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
     // Compute log prob for possible poses
     vector<RelativePoseResults> relative_pose_results;
     computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, true, relative_pose_results);
+//    computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, false, relative_pose_results);
 
     // Compute the maximum likelihood translation and rotation between the previous scan and this one
     Vector2f maximum_likelihood_scan_offset_position;
     float maximum_likelihood_scan_offset_angle;
     getMaximumLikelihoodScanOffset(relative_pose_results, true, maximum_likelihood_scan_offset_position,
                                    maximum_likelihood_scan_offset_angle);
+//    getMaximumLikelihoodScanOffset(relative_pose_results, false, maximum_likelihood_scan_offset_position,
+//                                   maximum_likelihood_scan_offset_angle);
 //    maximum_likelihood_scan_offset_position = odom_est_loc_displ;
 //    maximum_likelihood_scan_offset_angle = odom_est_angle_displ;
 

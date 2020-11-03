@@ -145,7 +145,7 @@ class SLAM {
      *
      * TODO tune this value.
      */
-    const float kDefaultLaserVariance = 0.01;
+    const float kDefaultLaserVariance = 0.05;
 
     /**
      * ROS parameter name for the resolution of the raster table.
@@ -190,7 +190,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalTranslIncrement = 0.005;
+    const float kDefaultPoseEvalTranslIncrement = 0.05;
 
     /**
      * Default value for the resolution of the pose search cube in the rotation dimension.
@@ -200,7 +200,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(1.0);
+    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(3.0);
 
     /**
      * ROS Parameter name for how many standard deviations (on each side of odom pose) we should compute likelihoods
@@ -229,10 +229,10 @@ class SLAM {
      *
      * TODO tune these
      */
-    const float kDefaultMotionModelTranslErrorFromRot = 0.2; // was 0.15
-    const float kDefaultMotionModelTranslErrorFromTransl = 0.15;
-    const float kDefaultMotionModelRotErrorFromRot = 0.2; // was 0.2
-    const float kDefaultMotionModelRotErrorFromTransl = 0.2; // was 0.15
+    const float kDefaultMotionModelTranslErrorFromRot = 0.05; // was 0.15
+    const float kDefaultMotionModelTranslErrorFromTransl = 0.05;
+    const float kDefaultMotionModelRotErrorFromRot = 0.125; // was 0.2
+    const float kDefaultMotionModelRotErrorFromTransl = 0.1; // was 0.15
 
     bool first_scan_ = true;
 
