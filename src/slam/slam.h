@@ -229,10 +229,10 @@ class SLAM {
      *
      * TODO tune these
      */
-    const float kDefaultMotionModelTranslErrorFromRot = 0.05; // was 0.15
-    const float kDefaultMotionModelTranslErrorFromTransl = 0.05;
-    const float kDefaultMotionModelRotErrorFromRot = 0.125; // was 0.2
-    const float kDefaultMotionModelRotErrorFromTransl = 0.1; // was 0.15
+    const float kDefaultMotionModelTranslErrorFromRot = 0.1; // was 0.15
+    const float kDefaultMotionModelTranslErrorFromTransl = 0.1;
+    const float kDefaultMotionModelRotErrorFromRot = 0.2; // was 0.2
+    const float kDefaultMotionModelRotErrorFromTransl = 0.2; // was 0.15
 
     bool first_scan_ = true;
 
