@@ -84,6 +84,11 @@ SLAM::SLAM(ros::NodeHandle *node_handle) :
     node_handle_->param(kRasterGridIncrementParamName, raster_grid_increment_, kDefaultRasterGridIncrement);
     node_handle_->param(kRasterGridSizeParamName, raster_grid_size_, kDefaultRasterGridSize);
 
+    node_handle_->param(kUseGTSAMParamName, use_gtsam_, kDefaultUseGTSAMConfig);
+
+    node_handle_->param(kNonSuccessiveMaxPosDifferenceParamName, non_successive_max_pos_difference_,
+                        kDefaultNonSuccessiveMaxPosDifference);
+
     raster_grid_center_offset_ = (0.5 * raster_grid_increment_) - (0.5 * raster_grid_size_);
 
     raster_rows_and_cols_ = ceil(raster_grid_size_ / raster_grid_increment_);
@@ -267,7 +272,8 @@ double SLAM::computeMotionLogProbForRelativePose(const Eigen::Vector2f &position
 void SLAM::computeLogProbsForRotatedScans(const vector<Vector2f> &rotated_current_scan, const float &angle,
                                           const vector<float> &possible_x_offsets,
                                           const vector<float> &possible_y_offsets,
-					  const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                          const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                          const bool &compute_motion_likelihood,
                                           vector<RelativePoseResults> &log_prob_results) {
 
     // Scan will have already been rotated by the time this is called, so we just have to translate the points
@@ -275,21 +281,25 @@ void SLAM::computeLogProbsForRotatedScans(const vector<Vector2f> &rotated_curren
         for (const float &y_offset : possible_y_offsets) {
             Vector2f position_offset(x_offset, y_offset);
             double log_prob = computeLogProbForRelativePose(rotated_current_scan, position_offset);
-	        double motion_log_prob =  computeMotionLogProbForRelativePose(position_offset, angle, odom_position_offset, odom_angle_offset);
 	        RelativePoseResults result;
             result.location_offset_ = position_offset;
             result.rotation_offset_ = angle;
             result.obs_log_probability_ = log_prob;
-	        result.motion_log_probability_ = motion_log_prob;
+            if (compute_motion_likelihood) {
+                double motion_log_prob = computeMotionLogProbForRelativePose(position_offset, angle,
+                                                                             odom_position_offset, odom_angle_offset);
+                result.motion_log_probability_ = motion_log_prob;
+            }
             log_prob_results.emplace_back(result);
         }
     }
 }
 
 void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, const Vector2f &odom_position_offset,
-                                      const float &odom_angle_offset,
+                                      const float &odom_angle_offset, const bool &compute_motion_likelihood,
                                       vector<RelativePoseResults> &relative_pose_results) {
 
+    // TODO Should probably use something else to compute the search ranges for non-successive pose evaluation
     // Compute the standard deviation based on the translation and rotation since the last laser observation
     float transl_std_dev = (motion_model_transl_error_from_transl_ * (odom_position_offset.norm())) +
             (motion_model_transl_error_from_rot_ * fabs(odom_angle_offset));
@@ -348,18 +358,23 @@ void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, cons
         }
 //        ROS_INFO_STREAM("Rotated scan");
         computeLogProbsForRotatedScans(rotated_scan, rot_angle, possible_x_offsets, possible_y_offsets,
-                                       odom_position_offset, odom_angle_offset, relative_pose_results);
+                                       odom_position_offset, odom_angle_offset, compute_motion_likelihood,
+                                       relative_pose_results);
 //        ROS_INFO_STREAM("Computed log probs");
     }
 }
 
 void SLAM::getMaximumLikelihoodScanOffset(const vector<RelativePoseResults> &relative_pose_results,
-                                    Vector2f &max_likelihood_position_offset, float &max_likelihood_angular_offset) {
+                                          const bool &use_motion_likelihood, Vector2f &max_likelihood_position_offset,
+                                          float &max_likelihood_angular_offset) {
     double max_likelihood = -std::numeric_limits<double>::infinity();
     double totalLogLikelihood;
     for (const RelativePoseResults &pose_result : relative_pose_results) {
-        totalLogLikelihood = pose_result.motion_log_probability_+pose_result.obs_log_probability_;
-//        totalLogLikelihood = pose_result.obs_log_probability_;
+        if (use_motion_likelihood) {
+            totalLogLikelihood = pose_result.motion_log_probability_ + pose_result.obs_log_probability_;
+        } else {
+        totalLogLikelihood = pose_result.obs_log_probability_;
+        }
 	if (totalLogLikelihood > max_likelihood) {
             max_likelihood_position_offset = pose_result.location_offset_;
             max_likelihood_angular_offset = pose_result.rotation_offset_;
@@ -367,6 +382,84 @@ void SLAM::getMaximumLikelihoodScanOffset(const vector<RelativePoseResults> &rel
 //            ROS_INFO_STREAM("Found new ML solution " << max_likelihood_position_offset.x() << ", " << max_likelihood_position_offset.y());
         }
     }
+}
+
+void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, float range_min, float range_max, float angle_min,
+                        float angle_max) {
+
+    // This version should be used when we're integrating with GTSAM
+
+    // Compute the relative pose of the robot at time t-1 relative to the robot pose at time t
+    Vector2f inv_odom_est_displacement_unrotated = odom_loc_at_last_laser_align_ - prev_odom_loc_;
+    float inv_odom_est_angle_disp = math_util::AngleDiff(odom_angle_at_last_laser_align_, prev_odom_angle_);
+    Eigen::Rotation2Df rotate(-1 * odom_angle_at_last_laser_align_);
+    Vector2f inv_odom_est_displacement = rotate * inv_odom_est_displacement_unrotated;
+
+    // Compute the point cloud relative to the robot's current position
+    vector<Eigen::Vector2f> current_point_cloud;
+    convertRangesToPointCloud(ranges, angle_min, angle_max, range_max, current_point_cloud);
+
+    // Update the rasterized lookup of the current scan
+    updateRasterizedLookup(current_point_cloud);
+
+    // Add odometry factor to GTSAM TODO
+
+    // Compute log prob for possible poses
+    // This gives likelihood of inverse transform (gives pose of t-1 in t)
+    vector<RelativePoseResults> relative_pose_results;
+    computeLogProbsForPoseGrid(most_recent_used_scan_, inv_odom_est_displacement, inv_odom_est_angle_disp, false, relative_pose_results);
+
+    // Compute the maximum likelihood translation and rotation (provides maximum likelihood pose of the robot at t-1 relative to t)
+    Vector2f maximum_likelihood_scan_offset_position;
+    float maximum_likelihood_scan_offset_angle;
+    getMaximumLikelihoodScanOffset(relative_pose_results, false, maximum_likelihood_scan_offset_position,
+                                   maximum_likelihood_scan_offset_angle);
+
+    // TODO compute covariance
+    // TODO compute covariance of t-1 with respect to t (not global covariance like we're using now -- also only use observation, not motion)
+
+    // TODO insert into GTSAM, using cov est and MLE (make sure this is t-1 relative to t)
+
+    // If we have more than 1 pose in the trajectory, consider adding a constraint between poses older than this one
+    // and the new pose
+    if (laser_observations_for_pose_in_trajectory_.size() > 1) {
+        for (size_t i = 0; i < laser_observations_for_pose_in_trajectory_.size(); i++) {
+
+            // TODO
+            // Get initial estimated relative pose from t to i (pose of robot at time i relative to pose of robot at current scan)
+            // Find by combining pose of i relative to t-1 and then use odom estimate to get pose of t-1 in t and combine
+            Vector2f est_pose_robot_at_time_i_rel_to_t(0, 0); // TODO
+            float est_angle_robot_at_time_i_rel_to_t = 0; // TODO
+
+            // TODO compute this based on pose estimate (don't want to compare poses that won't have significantly overlapping scans)
+            bool poses_close_enough_to_compare =
+                    est_pose_robot_at_time_i_rel_to_t.norm() < non_successive_max_pos_difference_;
+            if (poses_close_enough_to_compare) {
+
+                vector<RelativePoseResults> relative_pose_results_pose_i;
+                computeLogProbsForPoseGrid(most_recent_used_scan_, est_pose_robot_at_time_i_rel_to_t, est_angle_robot_at_time_i_rel_to_t,
+                                           false, relative_pose_results_pose_i);
+
+                Vector2f mle_robot_pose_i_rel_to_t;
+                float  mle_robot_angle_i_rel_to_t;
+                getMaximumLikelihoodScanOffset(relative_pose_results_pose_i, false, mle_robot_pose_i_rel_to_t,
+                                               mle_robot_angle_i_rel_to_t);
+
+                // TODO compute covariance of pose at i relative to t (not global covariance like we're using now)
+                // TODO insert into GTSAM, using cov est and MLE (make sure this is i relative to t)
+            }
+        }
+    }
+
+    // Update the fields for the next laser reading
+    laser_observations_for_pose_in_trajectory_.emplace_back(current_point_cloud);
+    odom_angle_at_last_laser_align_ = prev_odom_angle_;
+    odom_loc_at_last_laser_align_ = prev_odom_loc_;
+    most_recent_used_scan_ = current_point_cloud;
+
+    // TODO extract trajectory estimates from GTSAM instead of building them up on our own
+    // Replace content of trajectory_estimates_ with revised estimates (MAKE SURE THAT trajectory_estimates_ remains the
+    // same size as laser_observations_for_pose_in_trajectory_)
 }
 
 void SLAM::ObserveLaser(const vector<float>& ranges,
@@ -405,6 +498,10 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
     ROS_INFO_STREAM("Curr odom " << prev_odom_loc_.x() << ", " << prev_odom_loc_.y() << ", " << prev_odom_angle_);
     ROS_INFO_STREAM("Last update " << odom_loc_at_last_laser_align_.x() << ", " << odom_loc_at_last_laser_align_.y() << ", " << odom_angle_at_last_laser_align_);
 
+    if (use_gtsam_) {
+        ObserveLaserMultipleScansCompared(ranges, range_min, range_max, angle_min, angle_max);
+        return;
+    }
 
     // Compute the odometry offset from the last recorded scan to use as an initial guess for the relative transform
     // between poses
@@ -422,12 +519,12 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
 
     // Compute log prob for possible poses
     vector<RelativePoseResults> relative_pose_results;
-    computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, relative_pose_results);
+    computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, true, relative_pose_results);
 
     // Compute the maximum likelihood translation and rotation between the previous scan and this one
     Vector2f maximum_likelihood_scan_offset_position;
     float maximum_likelihood_scan_offset_angle;
-    getMaximumLikelihoodScanOffset(relative_pose_results, maximum_likelihood_scan_offset_position,
+    getMaximumLikelihoodScanOffset(relative_pose_results, true, maximum_likelihood_scan_offset_position,
                                    maximum_likelihood_scan_offset_angle);
 //    maximum_likelihood_scan_offset_position = odom_est_loc_displ;
 //    maximum_likelihood_scan_offset_angle = odom_est_angle_displ;

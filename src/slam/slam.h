@@ -89,6 +89,16 @@ class SLAM {
     const float kBaselinkToLaserOffsetX = 0.2;
 
     /**
+     * Param name for enabling/disabling GTSAM and non-successvive pose evaluation
+     */
+    const std::string kUseGTSAMParamName = "use_gtsam";
+
+    /**
+     * Default configuration for if we should use GTSAM/compare non-successive poses.
+     */
+    const bool kDefaultUseGTSAMConfig = false;
+
+    /**
      * ROS Parameter name for the minimum change in the position reported by odometry between two evaluated laser scans.
      */
     const std::string kLaserUpdateOdomLocDifferenceParamName = "laser_update_odom_loc_diff";
@@ -111,6 +121,19 @@ class SLAM {
      * TODO tune this value.
      */
     const float kDefaultLaserUpdateOdomAngleDifference = math_util::DegToRad(10.0);
+
+    /**
+     * ROS Parameter name for the maximum difference between two positions that are not successive for comparing their
+     * scans.
+     */
+    const std::string kNonSuccessiveMaxPosDifferenceParamName = "non_succ_max_diff";
+
+    /**
+     * Default value for the maximum difference between two positions that are not successive for comparing their scans.
+     *
+     * TODO tune this value.
+     */
+    const float kDefaultNonSuccessiveMaxPosDifference = 3.0;
 
     /**
      * ROS parameter name for the laser variance (squared std dev).
@@ -214,6 +237,12 @@ class SLAM {
     bool first_scan_ = true;
 
     /**
+     * True if we should use GTSAM and optimize non-successive scan alignment, false if we should only align between
+     * successive scans.
+     */
+    bool use_gtsam_;
+
+    /**
      * Laser variance (squared std dev).
      */
     float laser_variance_;
@@ -227,6 +256,11 @@ class SLAM {
      * Minimum change in rotation reported by odometry between two evaluated laser scans.
      */
     float laser_update_odom_angle_difference_;
+
+    /**
+     * Maximum difference between two non-successive poses for their scans to be used to add additional map constraints.
+     */
+    float non_successive_max_pos_difference_;
 
     /**
      * Resolution of the raster table.
@@ -378,10 +412,13 @@ class SLAM {
      *
      * @param relative_pose_results[in]             Results from the pose evaluation based on the current scan and the
      *                                              rasterized lookup table based on the previous scan.
+     * @param use_motion_likelihood                 True if the motion likelihood should be used to compute the overall
+     *                                              likelihood, false if this should just use the observation model.
      * @param max_likelihood_position_offset[out]   Position offset that had the maximum likelihood.
      * @param max_likelihood_angular_offset[out]    Rotation offset that hadn the maximum likelihood.
      */
     void getMaximumLikelihoodScanOffset(const std::vector<RelativePoseResults> &relative_pose_results,
+                                        const bool &use_motion_likelihood,
                                         Eigen::Vector2f &max_likelihood_position_offset,
                                         float &max_likelihood_angular_offset);
 
@@ -400,6 +437,7 @@ class SLAM {
      */
     void computeLogProbsForPoseGrid(const std::vector<Eigen::Vector2f> &current_scan,
                                     const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                    const bool &compute_motion_likelihood,
                                     std::vector<RelativePoseResults> &relative_pose_results);
 
     /**
@@ -423,7 +461,8 @@ class SLAM {
     void computeLogProbsForRotatedScans(const std::vector<Eigen::Vector2f> &rotated_current_scan, const float &angle,
                                         const std::vector<float> &possible_x_offsets,
                                         const std::vector<float> &possible_y_offsets,
-					const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+					                    const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                        const bool &compute_motion_model,
                                         std::vector<RelativePoseResults> &log_prob_results);
 
     /**
@@ -471,6 +510,18 @@ class SLAM {
      * @param (MLE(loc), MLE(anlge))
      */
     void updateTrajectoryEstimates(const std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> &nextBestPoseAndCov, const std::pair<Eigen::Vector2f, float> &MLEPoseAndAngleOffset);
+
+    /**
+     * Version of observe laser that optimizes non-successive scans.
+     *
+     * @param ranges    Lidar range returns
+     * @param range_min Min lidar range.
+     * @param range_max Max lidar range.
+     * @param angle_min Minimum angle for the lidar scan.
+     * @param angle_max Maximum angle for the lidar scan.
+     */
+    void ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, float range_min, float range_max, float angle_min,
+                                           float angle_max);
 };
 }  // namespace slam
 
