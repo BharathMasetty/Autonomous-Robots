@@ -47,14 +47,14 @@ namespace slam {
         float rotation_offset_;
 
         /**
-         * Log probability of the relative pose.
+         * Observation log probability of the relative pose.
          */
         double obs_log_probability_;
 
-	/**
-	 * Motion model log probability of the relatve pose
-	 */
-	double motion_log_probability_;
+        /**
+         * Motion model log probability of the relative pose.
+         */
+        double motion_log_probability_;
     };
 
 class SLAM {
@@ -79,6 +79,13 @@ class SLAM {
   // Get latest robot pose.
   void GetPose(Eigen::Vector2f* loc, float* angle) const;
 
+  /**
+   * Add the currently estimated trajectory and the odometry-only estimate to the visualization.
+   *
+   * Odometry estimate may not start at the same pose.
+   *
+   * @param visualization_msg[out] Visualization message to add trajectory and odometry estimates to.
+   */
   void publishTrajectory(amrl_msgs::VisualizationMsg &visualization_msg);
 
  private:
@@ -87,6 +94,21 @@ class SLAM {
      * Offset of the laser from the base_link frame in the x direction.
      */
     const float kBaselinkToLaserOffsetX = 0.2;
+
+    /**
+     * Length of the line segment to use when visualizing a pose in the trajectory.
+     */
+    const float kTrajectoryPlotLineSegName = 0.4;
+
+    /**
+     * Color to use when visualizing the SLAM estimated trajectory.
+     */
+    const uint32_t kTrajectoryColor = 0x34b4eb;
+
+    /**
+     * Color to use when visualizing the odometry.
+     */
+    const uint32_t kOdometryEstColor = 0x3400b;
 
     /**
      * Param name for enabling/disabling GTSAM and non-successvive pose evaluation
@@ -234,6 +256,9 @@ class SLAM {
     const float kDefaultMotionModelRotErrorFromRot = 0.2; // was 0.2
     const float kDefaultMotionModelRotErrorFromTransl = 0.2; // was 0.15
 
+    /**
+     * True if the next scan to receive will be the first scan, false if we've already processed scans.
+     */
     bool first_scan_ = true;
 
     /**
@@ -311,10 +336,6 @@ class SLAM {
     float motion_model_transl_error_from_transl_;
     float motion_model_rot_error_from_rot_;
     float motion_model_rot_error_from_transl_;
-	
-    //Translation and Rotation Standard deviation
-    float trans_std_dev_squared_;
-    float rot_std_dev_squared_;
 
     // Previous odometry-reported locations.
     Eigen::Vector2f prev_odom_loc_;
@@ -348,17 +369,10 @@ class SLAM {
      */
     Eigen::MatrixXd raster_mat_with_log_probs_;
 
-    void publishRasterAsImage();
-
     /**
      * Laser observations for each pose in the robot trajectory.
      */
     std::vector<std::vector<Eigen::Vector2f>> laser_observations_for_pose_in_trajectory_;
-
-    /**
-     * Robot's estimated trajectory. TODO uncomment when this is actually used.
-     */
-    // std::vector<std::pair<Eigen::Vector2f, float>> robot_trajectory_;
 
     /**
      * Most recently considered scan (taken at the last entry in robot_trajectory_).
@@ -370,7 +384,20 @@ class SLAM {
      */
     std::vector<std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f>> trajectory_estimates_;
 
+    /**
+     * Pose estimates from odometry only. May not be in the same frame as the trajectory estimates.
+     */
     std::vector<std::pair<Eigen::Vector2f, float>> odom_only_estimates_;
+
+    /**
+     * Publisher for the raster image.
+     */
+    ros::Publisher image_pub_;
+
+    /**
+     * Publish the raster as an image (visualize in RViz or other ROS tools).
+     */
+    void publishRasterAsImage();
 
     /**
      * Determine if the robot has moved far enough that we should compare the last used laser scan to the current laser
@@ -404,8 +431,6 @@ class SLAM {
      * @param reference_scan Reference scan to use in generating the rasterized version.
      */
     void updateRasterizedLookup(const std::vector<Eigen::Vector2f> &reference_scan);
-
-    ros::Publisher image_pub_;
 
     /**
      * Compute the maximum likelihood scan-scan transform given the results from the pose evaluation.
@@ -461,7 +486,7 @@ class SLAM {
     void computeLogProbsForRotatedScans(const std::vector<Eigen::Vector2f> &rotated_current_scan, const float &angle,
                                         const std::vector<float> &possible_x_offsets,
                                         const std::vector<float> &possible_y_offsets,
-					                    const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                        const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
                                         const bool &compute_motion_model,
                                         std::vector<RelativePoseResults> &log_prob_results);
 
@@ -480,9 +505,9 @@ class SLAM {
                                          const Eigen::Vector2f &position_offset);
     /**
      * Compute the Motion Model likelihood for a given relative pose
-     * @param position_offset 	    	    Position offset between robot pose for raster and current robot pose that should be evaluated.
+     * @param position_offset                 Position offset between robot pose for raster and current robot pose that should be evaluated.
      * 
-     * @param angle_offset  	    	    Angle offset between robot pose for raster and current robot pose that should be evaluated.
+     * @param angle_offset                  Angle offset between robot pose for raster and current robot pose that should be evaluated.
      *
      * @param odom_position_offset[in]      Position difference since last scan estimated by odometry (should search
      *                                      centered around this position).
@@ -492,7 +517,7 @@ class SLAM {
      *
      */
     double computeMotionLogProbForRelativePose(const Eigen::Vector2f &position_offset,  const float &angle_offset,
-		    				const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset);
+                            const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset);
 
     /**
      * Compute the estimate of the pose and covariance as described in CSM paper

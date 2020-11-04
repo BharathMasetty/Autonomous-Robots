@@ -101,21 +101,18 @@ SLAM::SLAM(ros::NodeHandle *node_handle) :
 void SLAM::publishTrajectory(amrl_msgs::VisualizationMsg &vis_msg) {
     for (const auto &trajectory_point_with_cov : trajectory_estimates_) {
         std::pair<Vector2f, float> trajectory_point = trajectory_point_with_cov.first;
-        float line_seg_len = 0.4;
-        Vector2f secondpoint(line_seg_len * cos(trajectory_point.second), line_seg_len * sin(trajectory_point.second));
-        uint32_t trajectory_color = 0x34b4eb;
+
+        Vector2f second_point(kTrajectoryPlotLineSegName * cos(trajectory_point.second), kTrajectoryPlotLineSegName * sin(trajectory_point.second));
         visualization::DrawLine(trajectory_point.first,
-                                trajectory_point.first + secondpoint,
-                                trajectory_color, vis_msg);
+                                trajectory_point.first + second_point,
+                                kTrajectoryColor, vis_msg);
     }
 
     for (const auto &odom_pos : odom_only_estimates_) {
-        float line_seg_len = 0.4;
-        Vector2f secondpoint(line_seg_len * cos(odom_pos.second), line_seg_len * sin(odom_pos.second));
-        uint32_t trajectory_color = 0x3400eb;
+        Vector2f second_point(kTrajectoryPlotLineSegName * cos(odom_pos.second), kTrajectoryPlotLineSegName * sin(odom_pos.second));
         visualization::DrawLine(odom_pos.first,
-                                odom_pos.first + secondpoint,
-                                trajectory_color, vis_msg);
+                                odom_pos.first + second_point,
+                                kOdometryEstColor, vis_msg);
     }
 }
 
@@ -128,7 +125,8 @@ void SLAM::GetPose(Eigen::Vector2f* loc, float* angle) const {
         locInfo = trajectory_estimates_.back().first;
     }
     
-    // Return the latest pose estimate of the robot.
+    // Return the latest pose estimate of the robot plus whatever odometry has not yet been incorporated into the
+    // trajectory.
     Eigen::Vector2f& loc_ = *loc;
     float& angle_ = *angle;
 
@@ -166,6 +164,7 @@ void SLAM::convertRangesToPointCloud(const vector<float>& ranges, const float &a
     double angle_inc = (angle_max - angle_min) / (num_rays - 1);
     for (int i=0; i < num_rays; i++) {
         float range = ranges[i];
+        // Exclude points at or greater than range max because they don't correspond to an actual obstacle in the world
         if (range < range_max) {
             float curr_angle = angle_min + (i * angle_inc);
             Vector2f cloud_point(range * cos(curr_angle) + kBaselinkToLaserOffsetX, range * sin(curr_angle));
@@ -179,11 +178,12 @@ void SLAM::publishRasterAsImage() {
     sensor_msgs::Image image;
 
     image.header.frame_id = "raster";
-    image.is_bigendian = false; // TODO?
+    image.is_bigendian = false;
     image.height = raster_rows_and_cols_;
     image.width = raster_rows_and_cols_;
     image.step = raster_rows_and_cols_;
 
+    // Find the minimum and maximum values from the raster (used to scale)
     double max_raster = -std::numeric_limits<double>::infinity();
     double min_raster = std::numeric_limits<double>::infinity();
     for (int x = 0; x < raster_rows_and_cols_; x++) {
@@ -198,6 +198,7 @@ void SLAM::publishRasterAsImage() {
         }
     }
 
+    // Convert the raster values into the range 0-255 and add them to the image
     for (int y = 0; y < raster_rows_and_cols_; y++) {
         for (int x = 0; x < raster_rows_and_cols_; x++) {
             double raster_val = raster_mat_with_log_probs_(y, x);
@@ -207,7 +208,6 @@ void SLAM::publishRasterAsImage() {
         }
     }
 
-    ROS_INFO_STREAM("Publishing image");
     image.encoding = "mono8";
     image_pub_.publish(image);
 }
@@ -221,25 +221,23 @@ double SLAM::computeLogProbForRelativePose(const vector<Vector2f> &rotated_curre
         int lookup_column = floor((transformed_scan_point.x() - raster_grid_center_offset_) / raster_grid_increment_);
         int lookup_row = floor((transformed_scan_point.y() - raster_grid_center_offset_) / raster_grid_increment_);
 
+        // Ignoring points that don't fall within the raster range.
         if ((lookup_row >= 0) && (lookup_row < raster_rows_and_cols_)
                 && (lookup_column >= 0) && (lookup_column < raster_rows_and_cols_)) {
             log_prob += raster_mat_with_log_probs_(lookup_row, lookup_column);
         }
-        // TODO how should we deal with points that aren't in the raster range? Just ignore them?
     }
     return log_prob;
 }
 
 double SLAM::computeMotionLogProbForRelativePose(const Eigen::Vector2f &position_offset,  const float &angle_offset,
-						 const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset){
-	
-	double motionLogProb;
-	
-	// These three values can be pre-calculated if things seem to be running too slow.
-	//float delta_rot_1 = atan2(odom_position_offset.y(), odom_position_offset.x()) - odom_angle_at_last_laser_align_;
-    	float delta_rot_1 = atan2(odom_position_offset.y(), odom_position_offset.x());
-	float delta_trans = odom_position_offset.norm();
-    	float delta_rot_2 = odom_angle_offset - delta_rot_1;
+                                                 const Eigen::Vector2f &odom_position_offset,
+                                                 const float &odom_angle_offset) {
+    double motionLogProb;
+
+    float delta_rot_1 = atan2(odom_position_offset.y(), odom_position_offset.x());
+    float delta_trans = odom_position_offset.norm();
+    float delta_rot_2 = odom_angle_offset - delta_rot_1;
 
     std::pair<Vector2f, float> prev_loc_info;
     if (trajectory_estimates_.empty()) {
@@ -247,26 +245,23 @@ double SLAM::computeMotionLogProbForRelativePose(const Eigen::Vector2f &position
     } else {
         prev_loc_info = trajectory_estimates_.back().first;
     }
-	//Eigen::Vector2f lastTimeStepLoc = prevLocInfo.first.first;
-    	//float lastTimeStepAngle = prev_loc_info.second;
-	
-	//Eigen::Vector2f possibleCurrLoc = position_offset + lastTimeStepLoc;
-	//float possibleCurrAngle = angle_offset + lastTimeStepAngle;
-	
-	//float delta_rot_1_hat = atan2(position_offset.y(), position_offset.x()) - lastTimeStepAngle;  
-	float delta_rot_1_hat = atan2(position_offset.y(), position_offset.x());
-	float delta_trans_hat = position_offset.norm();
-	float delta_rot_2_hat =	angle_offset - delta_rot_1_hat;
-	
-	float delta_rot_1_std_dev = motion_model_rot_error_from_rot_*delta_rot_1_hat + motion_model_rot_error_from_transl_*delta_trans_hat;
-	float delta_trans_std_dev = motion_model_transl_error_from_rot_*(delta_rot_1_hat+delta_rot_2_hat) + motion_model_transl_error_from_transl_*delta_trans_hat;
-	float delta_rot_2_std_dev = motion_model_rot_error_from_rot_*delta_rot_2_hat + motion_model_rot_error_from_transl_*delta_trans_hat; 
 
-	motionLogProb  = -std::pow(delta_rot_1-delta_rot_1_hat, 2)/(2*std::pow(delta_rot_1_std_dev, 2));
-	motionLogProb += -std::pow(delta_trans-delta_trans_hat ,2)/(2*std::pow(delta_trans_std_dev ,2));
-	motionLogProb += -std::pow(delta_rot_2-delta_rot_2_hat ,2)/(2*std::pow(delta_rot_2_std_dev ,2));
+    float delta_rot_1_hat = atan2(position_offset.y(), position_offset.x());
+    float delta_trans_hat = position_offset.norm();
+    float delta_rot_2_hat = angle_offset - delta_rot_1_hat;
 
-	return motionLogProb;
+    float delta_rot_1_std_dev = motion_model_rot_error_from_rot_ * delta_rot_1_hat +
+            motion_model_rot_error_from_transl_*delta_trans_hat;
+    float delta_trans_std_dev = motion_model_transl_error_from_rot_ * (delta_rot_1_hat + delta_rot_2_hat) +
+            motion_model_transl_error_from_transl_ * delta_trans_hat;
+    float delta_rot_2_std_dev = motion_model_rot_error_from_rot_ * delta_rot_2_hat +
+            motion_model_rot_error_from_transl_ * delta_trans_hat;
+
+    motionLogProb  = -std::pow(delta_rot_1-delta_rot_1_hat,2)/(2*std::pow(delta_rot_1_std_dev, 2));
+    motionLogProb += -std::pow(delta_trans-delta_trans_hat,2)/(2*std::pow(delta_trans_std_dev ,2));
+    motionLogProb += -std::pow(delta_rot_2-delta_rot_2_hat,2)/(2*std::pow(delta_rot_2_std_dev ,2));
+
+    return motionLogProb;
 }
 
 void SLAM::computeLogProbsForRotatedScans(const vector<Vector2f> &rotated_current_scan, const float &angle,
@@ -281,7 +276,7 @@ void SLAM::computeLogProbsForRotatedScans(const vector<Vector2f> &rotated_curren
         for (const float &y_offset : possible_y_offsets) {
             Vector2f position_offset(x_offset, y_offset);
             double log_prob = computeLogProbForRelativePose(rotated_current_scan, position_offset);
-	        RelativePoseResults result;
+            RelativePoseResults result;
             result.location_offset_ = position_offset;
             result.rotation_offset_ = angle;
             result.obs_log_probability_ = log_prob;
@@ -305,7 +300,7 @@ void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, cons
             (motion_model_transl_error_from_rot_ * fabs(odom_angle_offset));
     float rot_std_dev = (motion_model_rot_error_from_transl_ * (odom_position_offset.norm())) +
             (motion_model_rot_error_from_rot_ * fabs(odom_angle_offset));
-	
+
     // We're searching all poses within some confidence interval of the standard deviation
     // Compute the maximum translation offset from the odometry estimate that we should search
     // and then round up so it is a multiple of the translation search increment
@@ -349,18 +344,15 @@ void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, cons
 
     // Iterate over the angles in the outermost loop so that we can rotate the scans only once for each angle
     for (const float &rot_angle : possible_rotations) {
-//        ROS_INFO_STREAM("Iterating for rotation " << rot_angle);
         Rotation2Df eig_rotation(rot_angle);
         vector<Vector2f> rotated_scan;
         rotated_scan.reserve(current_scan.size());
         for (const Vector2f &point : current_scan) {
-            rotated_scan.emplace_back(eig_rotation * point); // TODO verify
+            rotated_scan.emplace_back(eig_rotation * point);
         }
-//        ROS_INFO_STREAM("Rotated scan");
         computeLogProbsForRotatedScans(rotated_scan, rot_angle, possible_x_offsets, possible_y_offsets,
                                        odom_position_offset, odom_angle_offset, compute_motion_likelihood,
                                        relative_pose_results);
-//        ROS_INFO_STREAM("Computed log probs");
     }
 }
 
@@ -373,13 +365,13 @@ void SLAM::getMaximumLikelihoodScanOffset(const vector<RelativePoseResults> &rel
         if (use_motion_likelihood) {
             totalLogLikelihood = pose_result.motion_log_probability_ + pose_result.obs_log_probability_;
         } else {
-        totalLogLikelihood = pose_result.obs_log_probability_;
+            totalLogLikelihood = pose_result.obs_log_probability_;
         }
-	if (totalLogLikelihood > max_likelihood) {
+
+        if (totalLogLikelihood > max_likelihood) {
             max_likelihood_position_offset = pose_result.location_offset_;
             max_likelihood_angular_offset = pose_result.rotation_offset_;
             max_likelihood = totalLogLikelihood;
-//            ROS_INFO_STREAM("Found new ML solution " << max_likelihood_position_offset.x() << ", " << max_likelihood_position_offset.y());
         }
     }
 }
@@ -473,11 +465,6 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
 
     if (!odom_initialized_) {
         ROS_ERROR_STREAM("Odom not initialized. Skipping laser processing.");
-
-        // TODO is this the correct way to initialize? (need to have some laser scan to use for first comparison)
-        //odom_angle_at_last_laser_align_ = prev_odom_angle_;
-        //odom_loc_at_last_laser_align_ = prev_odom_loc_;
-        //convertRangesToPointCloud(ranges, angle_min, angle_max, range_max, most_recent_used_scan_);
         return;
     }
 
@@ -520,30 +507,22 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
     // Compute log prob for possible poses
     vector<RelativePoseResults> relative_pose_results;
     computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, true, relative_pose_results);
-//    computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, false, relative_pose_results);
 
     // Compute the maximum likelihood translation and rotation between the previous scan and this one
     Vector2f maximum_likelihood_scan_offset_position;
     float maximum_likelihood_scan_offset_angle;
     getMaximumLikelihoodScanOffset(relative_pose_results, true, maximum_likelihood_scan_offset_position,
                                    maximum_likelihood_scan_offset_angle);
-//    getMaximumLikelihoodScanOffset(relative_pose_results, false, maximum_likelihood_scan_offset_position,
-//                                   maximum_likelihood_scan_offset_angle);
-//    maximum_likelihood_scan_offset_position = odom_est_loc_displ;
-//    maximum_likelihood_scan_offset_angle = odom_est_angle_displ;
 
     ROS_INFO_STREAM("Maximum likelihood offset " << maximum_likelihood_scan_offset_position.x() << ", " << maximum_likelihood_scan_offset_position.y() << ", " << maximum_likelihood_scan_offset_angle);
     ROS_INFO_STREAM("Odom offset " << odom_est_loc_displ.x() << ", " << odom_est_loc_displ.y() << ", " << odom_est_angle_displ);
 
     // Computing expected pose and covariance
     std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> poseAndCovariance;
-//    ROS_INFO_STREAM("Computing cov");
     poseAndCovariance = computeMeanPoseAndCovariance(relative_pose_results);
-//    ROS_INFO_STREAM("Update trajectory estimates");
+
     // Updating Trajectory Estimate
     updateTrajectoryEstimates(poseAndCovariance, std::make_pair(maximum_likelihood_scan_offset_position, maximum_likelihood_scan_offset_angle));
-
-//    ROS_INFO_STREAM("Done updating trajectory estimates");
 
     // Update the fields for the next laser reading
     laser_observations_for_pose_in_trajectory_.emplace_back(current_point_cloud);
@@ -554,7 +533,7 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
 
 std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> SLAM::computeMeanPoseAndCovariance(const std::vector<RelativePoseResults> &poses_with_likelihood){
 
-    float est_angle_offset=0.;
+    float est_angle_offset = 0.0;
     Eigen::Vector2f est_loc_offset(0,0);
     Eigen::Matrix3f K=Eigen::MatrixXf::Zero(3,3);
     Eigen::Matrix3f u=Eigen::MatrixXf::Zero(3,3);
@@ -570,34 +549,37 @@ std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> SLAM::computeMeanP
 
     double cumulativeTotalProbability=0.;
     for (const RelativePoseResults &pose : poses_with_likelihood){
-    	double totalProb = std::exp(pose.obs_log_probability_ + pose.motion_log_probability_);
-	
-	est_loc_offset += pose.location_offset_*totalProb;
-	est_angle_offset += pose.rotation_offset_*totalProb;
-	cumulativeTotalProbability += totalProb;
-	
-	float globalAngle = pose.rotation_offset_+lastTimeStepAngle;
-       	Eigen::Vector2f globalLoc = pose.location_offset_+lastTimeStepLoc;	
-	Eigen::Matrix3f globalPose;
-        globalPose << cos(globalAngle), -sin(globalAngle), globalLoc.x(),
-		      sin(globalAngle),  cos(globalAngle), globalLoc.y(),
-		      0,		 0, 		   1;
+        double totalProb = std::exp(pose.obs_log_probability_ + pose.motion_log_probability_);
 
-	K += globalPose * globalPose.transpose() * totalProb;
-	u += globalPose * totalProb;
+        est_loc_offset += pose.location_offset_ * totalProb;
+        est_angle_offset += pose.rotation_offset_*totalProb;
+        cumulativeTotalProbability += totalProb;
+
+        float globalAngle = pose.rotation_offset_+lastTimeStepAngle;
+        Eigen::Vector2f globalLoc = pose.location_offset_+lastTimeStepLoc;
+        Eigen::Matrix3f globalPose;
+        globalPose << cos(globalAngle), -sin(globalAngle), globalLoc.x(),
+        sin(globalAngle),  cos(globalAngle), globalLoc.y(),
+        0,         0,            1;
+
+        K += globalPose * globalPose.transpose() * totalProb;
+        u += globalPose * totalProb;
     }
+
     // Mean Pose Estimate
-    est_loc_offset =  est_loc_offset/cumulativeTotalProbability;
+    est_loc_offset = est_loc_offset/cumulativeTotalProbability;
     est_angle_offset = est_angle_offset/cumulativeTotalProbability;
+
     // Covariance
     Eigen::Matrix3f Covariance;
-    Covariance = K/cumulativeTotalProbability - u*u.transpose()/(std::pow(cumulativeTotalProbability, 2));
+    Covariance = (K / cumulativeTotalProbability) - ((u * u.transpose()) / (std::pow(cumulativeTotalProbability, 2)));
 
     return std::make_pair(std::make_pair(est_loc_offset, est_angle_offset), Covariance);
 }
 
-void SLAM::updateTrajectoryEstimates(const std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> &nextBestPoseAndCov,
-				     const std::pair<Eigen::Vector2f, float> &MLEPoseAndAngleOffset){
+void SLAM::updateTrajectoryEstimates(
+        const std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> &nextBestPoseAndCov,
+        const std::pair<Eigen::Vector2f, float> &MLEPoseAndAngleOffset) {
 
     std::pair<Eigen::Vector2f, float> prevLocInfo;
     if (trajectory_estimates_.empty()) {
@@ -609,12 +591,13 @@ void SLAM::updateTrajectoryEstimates(const std::pair<std::pair<Eigen::Vector2f, 
     float lastTimeStepAngle = prevLocInfo.second;
     Rotation2Df eig_rotation(lastTimeStepAngle);
     Vector2f rotated_offset = eig_rotation * MLEPoseAndAngleOffset.first;
-	
+
     Eigen::Vector2f latestTrajPointLoc = lastTimeStepLoc + rotated_offset;
     float latestTrajPointAngle = lastTimeStepAngle + MLEPoseAndAngleOffset.second;
     Eigen::Matrix3f latestTrajPointCov = nextBestPoseAndCov.second;
-    trajectory_estimates_.push_back(std::make_pair(std::make_pair(latestTrajPointLoc, latestTrajPointAngle), latestTrajPointCov));
-    odom_only_estimates_.push_back(std::make_pair(prev_odom_loc_, prev_odom_angle_));
+    trajectory_estimates_.emplace_back(std::make_pair(
+            std::make_pair(latestTrajPointLoc, latestTrajPointAngle), latestTrajPointCov));
+    odom_only_estimates_.emplace_back(std::make_pair(prev_odom_loc_, prev_odom_angle_));
 }
 
 
@@ -634,41 +617,42 @@ void SLAM::updateRasterizedLookup(const vector<Vector2f> &reference_scan) {
         }
     }
 
-	publishRasterAsImage();
+    publishRasterAsImage();
 }
 
 void SLAM::ObserveOdometry(const Vector2f& odom_loc, const float odom_angle) {
-  if (!odom_initialized_) {
+    if (!odom_initialized_) {
+        prev_odom_angle_ = odom_angle;
+        prev_odom_loc_ = odom_loc;
+        odom_initialized_ = true;
+        return;
+    }
+
     prev_odom_angle_ = odom_angle;
     prev_odom_loc_ = odom_loc;
-//    odom_loc_at_last_laser_align_ = prev_odom_loc_;
-//    odom_angle_at_last_laser_align_ = prev_odom_angle_;
-    odom_initialized_ = true;
-    return;
-  }
-  prev_odom_angle_ = odom_angle;
-  prev_odom_loc_ = odom_loc;
 }
 
 vector<Vector2f> SLAM::GetMap() {
   vector<Vector2f> map;
+
   ROS_INFO_STREAM("Trajectory estiamtes size " << trajectory_estimates_.size());
   ROS_INFO_STREAM("scans size " << laser_observations_for_pose_in_trajectory_.size());
+
   for (size_t i = 0; i < laser_observations_for_pose_in_trajectory_.size(); i++) {
       float pose_angle = trajectory_estimates_[i].first.second;
       Vector2f loc = trajectory_estimates_[i].first.first;
       Eigen::Matrix3f pose_mat;
       pose_mat << cos(pose_angle), -sin(pose_angle), loc.x(),
-              sin(pose_angle),  cos(pose_angle), loc.y(),
-              0,		 0, 		   1;
+      sin(pose_angle),  cos(pose_angle), loc.y(),
+      0,         0,            1;
 
       vector<Vector2f> scan_at_pose = laser_observations_for_pose_in_trajectory_[i];
       for (const Vector2f &scan_point : scan_at_pose) {
           Eigen::Vector3f extra_entry_scan_point(scan_point.x(), scan_point.y(), 1);
           Eigen::Vector3f extra_entry_transformed_point = pose_mat * extra_entry_scan_point;
           Vector2f transformed_point(extra_entry_transformed_point.x(), extra_entry_transformed_point.y());
-	  
-	  map.emplace_back(transformed_point);
+
+          map.emplace_back(transformed_point);
       }
   }
   // Reconstruct the map as a single aligned point cloud from all saved poses
