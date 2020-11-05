@@ -102,6 +102,7 @@ void PublishMap() {
   for (const Vector2f& p : map) {
     visualization::DrawPoint(p, 0xC0C0C0, vis_msg_);
   }
+  slam_->publishTrajectory(vis_msg_);
   visualization_publisher_.publish(vis_msg_);
 }
 

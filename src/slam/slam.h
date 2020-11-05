@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <vector>
+#include <amrl_msgs/VisualizationMsg.h>
 
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Geometry"
@@ -46,14 +47,14 @@ namespace slam {
         float rotation_offset_;
 
         /**
-         * Log probability of the relative pose.
+         * Observation log probability of the relative pose.
          */
         double obs_log_probability_;
 
-	/**
-	 * Motion model log probability of the relatve pose
-	 */
-	double motion_log_probability_;
+        /**
+         * Motion model log probability of the relative pose.
+         */
+        double motion_log_probability_;
     };
 
 class SLAM {
@@ -78,12 +79,46 @@ class SLAM {
   // Get latest robot pose.
   void GetPose(Eigen::Vector2f* loc, float* angle) const;
 
+  /**
+   * Add the currently estimated trajectory and the odometry-only estimate to the visualization.
+   *
+   * Odometry estimate may not start at the same pose.
+   *
+   * @param visualization_msg[out] Visualization message to add trajectory and odometry estimates to.
+   */
+  void publishTrajectory(amrl_msgs::VisualizationMsg &visualization_msg);
+
  private:
 
     /**
      * Offset of the laser from the base_link frame in the x direction.
      */
     const float kBaselinkToLaserOffsetX = 0.2;
+
+    /**
+     * Length of the line segment to use when visualizing a pose in the trajectory.
+     */
+    const float kTrajectoryPlotLineSegName = 0.4;
+
+    /**
+     * Color to use when visualizing the SLAM estimated trajectory.
+     */
+    const uint32_t kTrajectoryColor = 0x34b4eb;
+
+    /**
+     * Color to use when visualizing the odometry.
+     */
+    const uint32_t kOdometryEstColor = 0x3400b;
+
+    /**
+     * Param name for enabling/disabling GTSAM and non-successvive pose evaluation
+     */
+    const std::string kUseGTSAMParamName = "use_gtsam";
+
+    /**
+     * Default configuration for if we should use GTSAM/compare non-successive poses.
+     */
+    const bool kDefaultUseGTSAMConfig = false;
 
     /**
      * ROS Parameter name for the minimum change in the position reported by odometry between two evaluated laser scans.
@@ -107,7 +142,20 @@ class SLAM {
      *
      * TODO tune this value.
      */
-    const float kDefaultLaserUpdateOdomAngleDifference = math_util::DegToRad(30.0);
+    const float kDefaultLaserUpdateOdomAngleDifference = math_util::DegToRad(10.0);
+
+    /**
+     * ROS Parameter name for the maximum difference between two positions that are not successive for comparing their
+     * scans.
+     */
+    const std::string kNonSuccessiveMaxPosDifferenceParamName = "non_succ_max_diff";
+
+    /**
+     * Default value for the maximum difference between two positions that are not successive for comparing their scans.
+     *
+     * TODO tune this value.
+     */
+    const float kDefaultNonSuccessiveMaxPosDifference = 3.0;
 
     /**
      * ROS parameter name for the laser variance (squared std dev).
@@ -119,7 +167,7 @@ class SLAM {
      *
      * TODO tune this value.
      */
-    const float kDefaultLaserVariance = 0.1;
+    const float kDefaultLaserVariance = 0.05;
 
     /**
      * ROS parameter name for the resolution of the raster table.
@@ -137,7 +185,7 @@ class SLAM {
      *
      * TODO tune this value.
      */
-    const float kDefaultRasterGridIncrement = 0.05;
+    const float kDefaultRasterGridIncrement = 0.01;
 
     /**
      * Default value for the size of one side of the square containing raster results in meters. This should be a
@@ -145,7 +193,7 @@ class SLAM {
      *
      * TODO tune this value.
      */
-    const float kDefaultRasterGridSize = 5.0;
+    const float kDefaultRasterGridSize = 7.0;
 
     /**
      * ROS Parameter name for the resolution of the pose search cube in the x and y dimensions.
@@ -164,7 +212,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalTranslIncrement = 0.1;
+    const float kDefaultPoseEvalTranslIncrement = 0.05;
 
     /**
      * Default value for the resolution of the pose search cube in the rotation dimension.
@@ -174,7 +222,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(5);
+    const float kDefaultPoseEvalRotIncrement = math_util::DegToRad(3.0);
 
     /**
      * ROS Parameter name for how many standard deviations (on each side of odom pose) we should compute likelihoods
@@ -188,7 +236,7 @@ class SLAM {
      *
      * TODO tune this
      */
-    const float kDefaultPoseSearchStdDevMultiplier = 2.0;
+    const float kDefaultPoseSearchStdDevMultiplier = 2.5;
 
     /**
      * ROS Parameter names for the motion model std dev scale factors.
@@ -203,10 +251,21 @@ class SLAM {
      *
      * TODO tune these
      */
-    const float kDefaultMotionModelTranslErrorFromRot = 0.00005;
-    const float kDefaultMotionModelTranslErrorFromTransl = 0.06;
-    const float kDefaultMotionModelRotErrorFromRot = 0.2;
-    const float kDefaultMotionModelRotErrorFromTransl = 0.2;
+    const float kDefaultMotionModelTranslErrorFromRot = 0.1; // was 0.15
+    const float kDefaultMotionModelTranslErrorFromTransl = 0.1;
+    const float kDefaultMotionModelRotErrorFromRot = 0.2; // was 0.2
+    const float kDefaultMotionModelRotErrorFromTransl = 0.2; // was 0.15
+
+    /**
+     * True if the next scan to receive will be the first scan, false if we've already processed scans.
+     */
+    bool first_scan_ = true;
+
+    /**
+     * True if we should use GTSAM and optimize non-successive scan alignment, false if we should only align between
+     * successive scans.
+     */
+    bool use_gtsam_;
 
     /**
      * Laser variance (squared std dev).
@@ -222,6 +281,11 @@ class SLAM {
      * Minimum change in rotation reported by odometry between two evaluated laser scans.
      */
     float laser_update_odom_angle_difference_;
+
+    /**
+     * Maximum difference between two non-successive poses for their scans to be used to add additional map constraints.
+     */
+    float non_successive_max_pos_difference_;
 
     /**
      * Resolution of the raster table.
@@ -272,10 +336,6 @@ class SLAM {
     float motion_model_transl_error_from_transl_;
     float motion_model_rot_error_from_rot_;
     float motion_model_rot_error_from_transl_;
-	
-    //Translation and Rotation Standard deviation
-    float trans_std_dev_squared_;
-    float rot_std_dev_squared_;
 
     // Previous odometry-reported locations.
     Eigen::Vector2f prev_odom_loc_;
@@ -315,11 +375,6 @@ class SLAM {
     std::vector<std::vector<Eigen::Vector2f>> laser_observations_for_pose_in_trajectory_;
 
     /**
-     * Robot's estimated trajectory. TODO uncomment when this is actually used.
-     */
-    // std::vector<std::pair<Eigen::Vector2f, float>> robot_trajectory_;
-
-    /**
      * Most recently considered scan (taken at the last entry in robot_trajectory_).
      */
     std::vector<Eigen::Vector2f> most_recent_used_scan_;
@@ -328,6 +383,21 @@ class SLAM {
      * Trajectory Estimates with respect to odom frame
      */
     std::vector<std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f>> trajectory_estimates_;
+
+    /**
+     * Pose estimates from odometry only. May not be in the same frame as the trajectory estimates.
+     */
+    std::vector<std::pair<Eigen::Vector2f, float>> odom_only_estimates_;
+
+    /**
+     * Publisher for the raster image.
+     */
+    ros::Publisher image_pub_;
+
+    /**
+     * Publish the raster as an image (visualize in RViz or other ROS tools).
+     */
+    void publishRasterAsImage();
 
     /**
      * Determine if the robot has moved far enough that we should compare the last used laser scan to the current laser
@@ -344,10 +414,13 @@ class SLAM {
      * @param ranges[in]        Range readings for the laser scan.
      * @param angle_min[in]     Minimum angle for the laser scan.
      * @param angle_max[in]     Maximum angle for the laser scan.
+     * @param range_max[in]     Maximum range for the laser scanner. Points with this value don't reflect actual
+     *                          objects, and consequently, should be filtered out of the scan used for map
+     *                          construction/scan comparison.
      * @param point_cloud[out]  Point cloud (x,y points relative to the base_link of the robot)
      */
     void convertRangesToPointCloud(const std::vector<float>& ranges, const float &angle_min, const float &angle_max,
-                                   std::vector<Eigen::Vector2f> &point_cloud);
+                                   const float &range_max, std::vector<Eigen::Vector2f> &point_cloud);
 
     /**
      * Update the variable containing the rasterized version of the reference scan.
@@ -364,10 +437,13 @@ class SLAM {
      *
      * @param relative_pose_results[in]             Results from the pose evaluation based on the current scan and the
      *                                              rasterized lookup table based on the previous scan.
+     * @param use_motion_likelihood                 True if the motion likelihood should be used to compute the overall
+     *                                              likelihood, false if this should just use the observation model.
      * @param max_likelihood_position_offset[out]   Position offset that had the maximum likelihood.
      * @param max_likelihood_angular_offset[out]    Rotation offset that hadn the maximum likelihood.
      */
     void getMaximumLikelihoodScanOffset(const std::vector<RelativePoseResults> &relative_pose_results,
+                                        const bool &use_motion_likelihood,
                                         Eigen::Vector2f &max_likelihood_position_offset,
                                         float &max_likelihood_angular_offset);
 
@@ -386,6 +462,7 @@ class SLAM {
      */
     void computeLogProbsForPoseGrid(const std::vector<Eigen::Vector2f> &current_scan,
                                     const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                    const bool &compute_motion_likelihood,
                                     std::vector<RelativePoseResults> &relative_pose_results);
 
     /**
@@ -409,7 +486,8 @@ class SLAM {
     void computeLogProbsForRotatedScans(const std::vector<Eigen::Vector2f> &rotated_current_scan, const float &angle,
                                         const std::vector<float> &possible_x_offsets,
                                         const std::vector<float> &possible_y_offsets,
-					const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                        const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
+                                        const bool &compute_motion_model,
                                         std::vector<RelativePoseResults> &log_prob_results);
 
     /**
@@ -427,9 +505,9 @@ class SLAM {
                                          const Eigen::Vector2f &position_offset);
     /**
      * Compute the Motion Model likelihood for a given relative pose
-     * @param position_offset 	    	    Position offset between robot pose for raster and current robot pose that should be evaluated.
+     * @param position_offset                 Position offset between robot pose for raster and current robot pose that should be evaluated.
      * 
-     * @param angle_offset  	    	    Angle offset between robot pose for raster and current robot pose that should be evaluated.
+     * @param angle_offset                  Angle offset between robot pose for raster and current robot pose that should be evaluated.
      *
      * @param odom_position_offset[in]      Position difference since last scan estimated by odometry (should search
      *                                      centered around this position).
@@ -439,7 +517,7 @@ class SLAM {
      *
      */
     double computeMotionLogProbForRelativePose(const Eigen::Vector2f &position_offset,  const float &angle_offset,
-		    				const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset);
+                            const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset);
 
     /**
      * Compute the estimate of the pose and covariance as described in CSM paper
@@ -457,6 +535,18 @@ class SLAM {
      * @param (MLE(loc), MLE(anlge))
      */
     void updateTrajectoryEstimates(const std::pair<std::pair<Eigen::Vector2f, float>, Eigen::Matrix3f> &nextBestPoseAndCov, const std::pair<Eigen::Vector2f, float> &MLEPoseAndAngleOffset);
+
+    /**
+     * Version of observe laser that optimizes non-successive scans.
+     *
+     * @param ranges    Lidar range returns
+     * @param range_min Min lidar range.
+     * @param range_max Max lidar range.
+     * @param angle_min Minimum angle for the lidar scan.
+     * @param angle_max Maximum angle for the lidar scan.
+     */
+    void ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, float range_min, float range_max, float angle_min,
+                                           float angle_max);
 };
 }  // namespace slam
 
