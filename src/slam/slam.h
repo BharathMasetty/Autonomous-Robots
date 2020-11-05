@@ -528,7 +528,7 @@ class SLAM {
     void ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, float range_min, float range_max, float angle_min,
                                            float angle_max);
 	
-    Eigen::Matrix3f computeRelativeCovariance(const std::vector<RelativePoseResults> &rel_poses_with_likelihood);
+    Eigen::Matrix3d computeRelativeCovariance(const std::vector<RelativePoseResults> &rel_poses_with_likelihood);
 
     // Creating an empty non-linear factor graph 
     gtsam::NonlinearFactorGraph graph_;
