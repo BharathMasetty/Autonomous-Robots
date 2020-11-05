@@ -26,6 +26,11 @@
 #include "eigen3/Eigen/Dense"
 #include "eigen3/Eigen/Geometry"
 
+#include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/geometry/Pose2.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/Marginals.h>
+
 #ifndef SRC_SLAM_H_
 #define SRC_SLAM_H_
 
@@ -358,7 +363,7 @@ class SLAM {
     /**
      * Robot's estimated trajectory. TODO uncomment when this is actually used.
      */
-    // std::vector<std::pair<Eigen::Vector2f, float>> robot_trajectory_;
+    //std::vector<std::pair<Eigen::Vector2f, float>> robot_trajectory_;
 
     /**
      * Most recently considered scan (taken at the last entry in robot_trajectory_).
@@ -522,6 +527,13 @@ class SLAM {
      */
     void ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, float range_min, float range_max, float angle_min,
                                            float angle_max);
+	
+    Eigen::Matrix3f computeRelativeCovariance(const std::vector<RelativePoseResults> &rel_poses_with_likelihood);
+
+    // Creating an empty non-linear factor graph 
+    gtsam::NonlinearFactorGraph graph_;
+
+    gtsam::Values initialEstimates_;
 };
 }  // namespace slam
 
