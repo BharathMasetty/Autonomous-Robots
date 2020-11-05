@@ -36,6 +36,7 @@
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/Marginals.h>
+#include <gtsam/slam/PriorFactor.h>
 #include "slam.h"
 
 #include "vector_map/vector_map.h"
@@ -46,6 +47,7 @@ using Eigen::Rotation2Df;
 using Eigen::Translation2f;
 using Eigen::Vector2f;
 using Eigen::Vector2i;
+using Eigen::Vector2d;
 using std::cout;
 using std::endl;
 using std::string;
@@ -425,14 +427,14 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
     computeLogProbsForPoseGrid(most_recent_used_scan_, inv_odom_est_displacement, inv_odom_est_angle_disp, false, relative_pose_results);
 
     // Compute the maximum likelihood translation and rotation (provides maximum likelihood pose of the robot at t-1 relative to t)
-    Vector2f maximum_likelihood_scan_offset_position;
-    float maximum_likelihood_scan_offset_angle;
+    Vector2f maximum_likelihood_scan_offset_position(0, 0);
+    float maximum_likelihood_scan_offset_angle = 0.0;
     getMaximumLikelihoodScanOffset(relative_pose_results, false, maximum_likelihood_scan_offset_position,
                                    maximum_likelihood_scan_offset_angle);
 
     // compute covariance
     // compute covariance of t-1 with respect to t (not global covariance like we're using now -- also only use observation, not motion)
-    Eigen::Matrix3f recent_inv_cov = computeRelativeCovariance(relative_pose_results);
+    Eigen::Matrix3d recent_inv_cov = computeRelativeCovariance(relative_pose_results);
 
     // insert into GTSAM, using cov est and MLE (make sure this is t-1 relative to t)
     noiseModel::Gaussian::shared_ptr cov =   noiseModel::Gaussian::Covariance(recent_inv_cov);
@@ -473,19 +475,19 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
                 computeLogProbsForPoseGrid(most_recent_used_scan_, est_pose_robot_at_time_i_rel_to_t, est_angle_robot_at_time_i_rel_to_t,
                                            false, relative_pose_results_pose_i);
 
-                Vector2f mle_robot_pose_i_rel_to_t;
-                float  mle_robot_angle_i_rel_to_t;
+                Vector2f mle_robot_pose_i_rel_to_t(0, 0);
+                float  mle_robot_angle_i_rel_to_t = 0.0;
                 getMaximumLikelihoodScanOffset(relative_pose_results_pose_i, false, mle_robot_pose_i_rel_to_t,
                                                mle_robot_angle_i_rel_to_t);
 
                 // TODO compute covariance of pose at i relative to t (not global covariance like we're using now)
 		// Uncomment when using
-		Eigen::Matrix3f cov_i_rel_to_t = computeRelativeCovariance(relative_pose_results_pose_i);
+		Eigen::Matrix3d cov_i_rel_to_t = computeRelativeCovariance(relative_pose_results_pose_i);
                 // TODO insert into GTSAM, using cov est and MLE (make sure this is i relative to t)
             	int index_of_i = i+1;
-		Pose2 mle(double(mle_robot_pose_i_rel_to_t.x()), double(mle_robot_pose_i_rel_to_t.y()), double(mle_robot_angle_i_rel_to_t));
+		Pose2 non_successive_mle(double(mle_robot_pose_i_rel_to_t.x()), double(mle_robot_pose_i_rel_to_t.y()), double(mle_robot_angle_i_rel_to_t));
 		noiseModel::Gaussian::shared_ptr cov_i_t=  noiseModel::Gaussian::Covariance(cov_i_rel_to_t);
-		graph_.add(BetweenFactor<Pose2>(index_of_t, index_of_i, mle, cov_i_t));
+		graph_.add(BetweenFactor<Pose2>(index_of_t, index_of_i, non_successive_mle, cov_i_t));
 	    }
         }
     }
@@ -506,12 +508,15 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
     Values::iterator it;
     for(it = result.begin(); it!=result.end(); it++){
         int key = it->key;
-	float x = result.at<Pose2>(key).x();
-	float y = result.at<Pose2>(key).y();
-	float theta = result.at<Pose2>(key).theta();
-	Vector2f loc(x,y);
-	Eigen::Matrix3f cov = marginals.marginalCovariance(key);
-	trajectory_estimates_.push_back(std::make_pair(std::make_pair(loc, theta), cov));
+        double x = result.at<Pose2>(key).x();
+        double y = result.at<Pose2>(key).y();
+        double theta = result.at<Pose2>(key).theta();
+        Vector2d loc(x,y);
+        Eigen::Matrix3d marginal_cov = marginals.marginalCovariance(key);
+        Eigen::Matrix3f marginal_cov_float = marginal_cov.cast<float>();
+
+        Vector2f loc_float = loc.cast<float>();
+        trajectory_estimates_.emplace_back(std::make_pair(std::make_pair(loc_float, (float) theta), marginal_cov_float));
     } 
 }
 
@@ -594,16 +599,16 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
     most_recent_used_scan_ = current_point_cloud;
 }
 
-Eigen::Matrix3f SLAM::computeRelativeCovariance(const std::vector<RelativePoseResults> &rel_poses_with_likelihood){
+Eigen::Matrix3d SLAM::computeRelativeCovariance(const std::vector<RelativePoseResults> &rel_poses_with_likelihood){
      
-    Eigen::Matrix3f K=Eigen::MatrixXf::Zero(3,3);
-    Eigen::Matrix3f u=Eigen::MatrixXf::Zero(3,3);
+    Eigen::Matrix3d K=Eigen::MatrixXd::Zero(3,3);
+    Eigen::Matrix3d u=Eigen::MatrixXd::Zero(3,3);
     double cumulative_probability=0;
     for (const RelativePoseResults &pose : rel_poses_with_likelihood){
     	double obs_prob = std::exp(pose.obs_log_probability_);
 	Vector2f rel_loc = pose.location_offset_;
 	float rel_angle = pose.rotation_offset_;
-	Eigen::Matrix3f relativePose;
+	Eigen::Matrix3d relativePose;
         relativePose << cos(rel_angle), -sin(rel_angle), rel_loc.x(),
                         sin(rel_angle),  cos(rel_angle), rel_loc.y(),
                         0,               0,              1;
@@ -614,7 +619,7 @@ Eigen::Matrix3f SLAM::computeRelativeCovariance(const std::vector<RelativePoseRe
 	// cumulative prob
 	cumulative_probability += obs_prob;
     }
-    Eigen::Matrix3f Covariance;
+    Eigen::Matrix3d Covariance;
     Covariance = K/cumulative_probability - u*u.transpose()/(std::pow(cumulative_probability, 2)); 
     return Covariance;    
 }
