@@ -30,9 +30,11 @@
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/Marginals.h>
+#include <gtsam/slam/PriorFactor.h>
 
 #ifndef SRC_SLAM_H_
 #define SRC_SLAM_H_
+
 
 namespace slam {
 
@@ -73,7 +75,7 @@ class SLAM {
                     float range_max,
                     float angle_min,
                     float angle_max);
-
+					
   // Observe new odometry-reported location.
   void ObserveOdometry(const Eigen::Vector2f& odom_loc,
                        const float odom_angle);
@@ -554,10 +556,10 @@ class SLAM {
                                            float angle_max);
 	
     Eigen::Matrix3d computeRelativeCovariance(const std::vector<RelativePoseResults> &rel_poses_with_likelihood);
-
-    // Creating an empty non-linear factor graph 
-    gtsam::NonlinearFactorGraph graph_;
-
+    
+    std::vector<gtsam::Pose2> initial_trajectory_estimates_;
+    
+    gtsam::NonlinearFactorGraph* graph_;
     gtsam::Values initialEstimates_;
 };
 }  // namespace slam

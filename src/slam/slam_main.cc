@@ -51,6 +51,15 @@
 #include "vector_map/vector_map.h"
 #include "visualization/visualization.h"
 
+#include <gtsam/nonlinear/Values.h>
+#include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/geometry/Pose2.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/Marginals.h>
+#include <gtsam/slam/PriorFactor.h>
+#include <gtsam/inference/Symbol.h>
+
+
 using amrl_msgs::VisualizationMsg;
 using geometry::line2f;
 using geometry::Line;
@@ -149,8 +158,8 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "slam");
   ros::NodeHandle n;
   InitializeMsgs();
+  
   slam_ = new slam::SLAM(&n);
-
   visualization_publisher_ =
       n.advertise<VisualizationMsg>("visualization", 1);
   localization_publisher_ =
