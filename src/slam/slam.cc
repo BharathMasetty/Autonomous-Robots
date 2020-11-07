@@ -32,11 +32,13 @@
 #include "shared/util/timer.h"
 #include <sensor_msgs/Image.h>
 #include <visualization/visualization.h>
+#include <gtsam/nonlinear/Values.h>
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/slam/PriorFactor.h>
+#include <gtsam/inference/Symbol.h>
 #include "slam.h"
 
 #include "vector_map/vector_map.h"
@@ -57,11 +59,11 @@ using vector_map::VectorMap;
 
 namespace slam {
 
-SLAM::SLAM(ros::NodeHandle *node_handle) :
+SLAM::SLAM(ros::NodeHandle *node_handle):
     prev_odom_loc_(0, 0),
     prev_odom_angle_(0),
     odom_initialized_(false),
-    node_handle_(node_handle) {
+    node_handle_(node_handle){
 
     node_handle_->param(kLaserVarianceParamName, laser_variance_, kDefaultLaserVariance);
 
@@ -102,13 +104,20 @@ SLAM::SLAM(ros::NodeHandle *node_handle) :
     image_pub_ =
             node_handle_->advertise<sensor_msgs::Image>("raster_img", 1);
     
+    graph_ = new NonlinearFactorGraph();
     // Adding prior noise to the initial pose
     Pose2 priorMean(0.0, 0.0, 0.0);
     noiseModel::Diagonal::shared_ptr priorNoise = 
 	    noiseModel::Diagonal::Sigmas(Vector3(1e-6, 1e-6, 1e-6));
-    graph_.add(PriorFactor<Pose2>(1, priorMean, priorNoise));	
-    initialEstimates_.insert(1, Pose2(0.0, 0.0, 0.0));
+    std::cout << "All clear" << std::endl;
+    graph_->add(PriorFactor<Pose2>(1, priorMean, priorNoise));	
+    std::cout << "All clear" << std::endl;
+    initial_trajectory_estimates_.push_back(Pose2(0.0, 0.0, 0.0));
+    //initialEstimates_.insert(Symbol('x',1), Pose2(0.0, 0.0, 0.0));
+    std::cout << "All clear" << std::endl;
     //TODO: setup  LevenbergMarquardtParams 
+    Eigen::Matrix3f cov = Eigen::MatrixXf::Zero(3,3);
+    trajectory_estimates_.push_back(std::make_pair(std::make_pair(prev_odom_loc_, prev_odom_angle_),cov));
 }
 
 void SLAM::publishTrajectory(amrl_msgs::VisualizationMsg &vis_msg) {
@@ -424,10 +433,10 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
     noiseModel::Diagonal::shared_ptr odometryNoise = 
     	    noiseModel::Diagonal::Sigmas(Vector3(transl_std_dev, transl_std_dev, rot_std_dev));
     
-    int index_of_tminus1 = trajectory_estimates_.size();
-    int index_of_t = index_of_tminus1 + 1; 	    
+    //int index_of_tminus1 = trajectory_estimates_.size();
+    //int index_of_t = index_of_tminus1 + 1; 	    
     Pose2 odometry(double(inv_odom_est_displacement.x()), double(inv_odom_est_displacement.y()), double(inv_odom_est_angle_disp));
-    graph_.add(BetweenFactor<Pose2>(index_of_t, index_of_tminus1, odometry, odometryNoise));   
+    //graph_->add(BetweenFactor<Pose2>(index_of_t, index_of_tminus1, odometry, odometryNoise));   
     
     // Compute log prob for possible poses
     // This gives likelihood of inverse transform (gives pose of t-1 in t)
@@ -447,14 +456,14 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
     // insert into GTSAM, using cov est and MLE (make sure this is t-1 relative to t)
     noiseModel::Gaussian::shared_ptr cov =   noiseModel::Gaussian::Covariance(recent_inv_cov);
     Pose2 mle(double(maximum_likelihood_scan_offset_position.x()), double(maximum_likelihood_scan_offset_position.y()), double(maximum_likelihood_scan_offset_angle));
-    graph_.add(BetweenFactor<Pose2>(index_of_t, index_of_tminus1, mle, cov)); 
+    //graph_.add(BetweenFactor<Pose2>(index_of_t, index_of_tminus1, mle, cov)); 
     // inserting initial estimate for pose at t
     Vector2f loc_guess_at_t;
     loc_guess_at_t = trajectory_estimates_.back().first.first - inv_odom_est_displacement_unrotated;
     float angle_guess_at_t = trajectory_estimates_.back().first.second - inv_odom_est_angle_disp;
     Pose2 pose_guess_at_t(double(loc_guess_at_t.x()), double(loc_guess_at_t.y()), double(angle_guess_at_t));
-    initialEstimates_.insert(index_of_t, pose_guess_at_t);
-
+    //initialEstimates_.insert(index_of_t, pose_guess_at_t);
+    //initial_trajectory_estimates_.push_back(pose_guess_at_t);
     // If we have more than 1 pose in the trajectory, consider adding a constraint between poses older than this one
     // and the new pose
     if (laser_observations_for_pose_in_trajectory_.size() > 1) {
@@ -492,10 +501,10 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
 		// Uncomment when using
 		Eigen::Matrix3d cov_i_rel_to_t = computeRelativeCovariance(relative_pose_results_pose_i);
                 // TODO insert into GTSAM, using cov est and MLE (make sure this is i relative to t)
-            	int index_of_i = i+1;
+            	//int index_of_i = i+1;
 		Pose2 non_successive_mle(double(mle_robot_pose_i_rel_to_t.x()), double(mle_robot_pose_i_rel_to_t.y()), double(mle_robot_angle_i_rel_to_t));
 		noiseModel::Gaussian::shared_ptr cov_i_t=  noiseModel::Gaussian::Covariance(cov_i_rel_to_t);
-		graph_.add(BetweenFactor<Pose2>(index_of_t, index_of_i, non_successive_mle, cov_i_t));
+		//graph_.add(BetweenFactor<Pose2>(index_of_t, index_of_i, non_successive_mle, cov_i_t));
 	    }
         }
     }
@@ -509,9 +518,10 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
     // TODO extract trajectory estimates from GTSAM instead of building them up on our own
     // Replace content of trajectory_estimates_ with revised estimates (MAKE SURE THAT trajectory_estimates_ remains the
     // same size as laser_observations_for_pose_in_trajectory_)
-    Values result = LevenbergMarquardtOptimizer(graph_, initialEstimates_).optimize(); 
-    Marginals marginals(graph_, result);
+    //Values result = LevenbergMarquardtOptimizer(graph_, initialEstimates_).optimize(); 
+    //Marginals marginals(graph_, result);
     // Update Trajectory Estimates vector
+    /*
     trajectory_estimates_.clear();
     Values::iterator it;
     for(it = result.begin(); it!=result.end(); it++){
@@ -525,7 +535,7 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
 
         Vector2f loc_float = loc.cast<float>();
         trajectory_estimates_.emplace_back(std::make_pair(std::make_pair(loc_float, (float) theta), marginal_cov_float));
-    } 
+    }*/ 
 }
 
 void SLAM::ObserveLaser(const vector<float>& ranges,
@@ -551,8 +561,6 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
         first_scan_ = false;
 
         // TODO is this the correct way to initialize? (need to have some laser scan to use for first comparison)
-	Eigen::Matrix3f cov = Eigen::MatrixXf::Zero(3,3); 
-        trajectory_estimates_.push_back(std::make_pair(std::make_pair(prev_odom_loc_, prev_odom_angle_),cov));
 	odom_angle_at_last_laser_align_ = prev_odom_angle_;
         odom_loc_at_last_laser_align_ = prev_odom_loc_;
         convertRangesToPointCloud(ranges, angle_min, angle_max, range_max, most_recent_used_scan_);
