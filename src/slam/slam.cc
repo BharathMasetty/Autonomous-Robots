@@ -36,6 +36,7 @@
 #include <gtsam/slam/BetweenFactor.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/nonlinear/GaussNewtonOptimizer.h>
 #include <gtsam/nonlinear/Marginals.h>
 #include <gtsam/slam/PriorFactor.h>
 #include <gtsam/inference/Symbol.h>
@@ -307,16 +308,22 @@ void SLAM::computeLogProbsForRotatedScans(const vector<Vector2f> &rotated_curren
 }
 
 void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, const Vector2f &odom_position_offset,
-                                      const float &odom_angle_offset, const bool &compute_motion_likelihood,
+                                      const float &odom_angle_offset, const bool &compute_motion_likelihood, const bool &use_odom_for_search_range,
                                       vector<RelativePoseResults> &relative_pose_results) {
 
-    // TODO Should probably use something else to compute the search ranges for non-successive pose evaluation
-    // Compute the standard deviation based on the translation and rotation since the last laser observation
-    float transl_std_dev = (motion_model_transl_error_from_transl_ * (odom_position_offset.norm())) +
-            (motion_model_transl_error_from_rot_ * fabs(odom_angle_offset));
-    float rot_std_dev = (motion_model_rot_error_from_transl_ * (odom_position_offset.norm())) +
-            (motion_model_rot_error_from_rot_ * fabs(odom_angle_offset));
-
+    float transl_std_dev;
+    float rot_std_dev;
+    if (use_odom_for_search_range) {
+        transl_std_dev = (motion_model_transl_error_from_transl_ * (odom_position_offset.norm())) +
+                               (motion_model_transl_error_from_rot_ * fabs(odom_angle_offset));
+        rot_std_dev = (motion_model_rot_error_from_transl_ * (odom_position_offset.norm())) +
+                            (motion_model_rot_error_from_rot_ * fabs(odom_angle_offset));
+    } else {
+        ROS_INFO_STREAM("Not using motion likelihood");
+        transl_std_dev = 0.25;
+        rot_std_dev = 0.1; // TODO maybe replace this with cov from original estimate plus odom
+    }
+	
     // We're searching all poses within some confidence interval of the standard deviation
     // Compute the maximum translation offset from the odometry estimate that we should search
     // and then round up so it is a multiple of the translation search increment
@@ -353,6 +360,8 @@ void SLAM::computeLogProbsForPoseGrid(const vector<Vector2f> &current_scan, cons
     }
 
     ROS_INFO_STREAM("Rotation min, max " << possible_rotations.front() << ", " << possible_rotations.back());
+    ROS_INFO_STREAM("X min, max " << possible_x_offsets.front() << ", " << possible_x_offsets.back());
+    ROS_INFO_STREAM("Y min, max " << possible_y_offsets.front() << ", " << possible_y_offsets.back());
 
     relative_pose_results.clear();
     size_t reserve_size = possible_rotations.size() * possible_y_offsets.size() * possible_x_offsets.size();
@@ -416,20 +425,23 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
             (motion_model_transl_error_from_rot_ * fabs(inv_odom_est_angle_disp));
     float rot_std_dev = (motion_model_rot_error_from_transl_ * (inv_odom_est_displacement.norm())) +
             (motion_model_rot_error_from_rot_ * fabs(inv_odom_est_angle_disp));
-    noiseModel::Diagonal::shared_ptr odometryNoise = 
+    noiseModel::Diagonal::shared_ptr odometryNoise =
     	    noiseModel::Diagonal::Sigmas(Vector3(transl_std_dev, transl_std_dev, rot_std_dev));
     
     int index_of_tminus1 = trajectory_estimates_.size();
     int index_of_t = index_of_tminus1 + 1;
     Pose2 odometry(double(inv_odom_est_displacement.x()), double(inv_odom_est_displacement.y()), double(inv_odom_est_angle_disp));
     ROS_INFO_STREAM("Graph interaction 1");
+    ROS_INFO_STREAM("Odom " << odometry.x() << ", " << odometry.y() << ", " << odometry.theta());
+
     graph_->add(BetweenFactor<Pose2>(index_of_t, index_of_tminus1, odometry, odometryNoise));
+    ROS_INFO_STREAM("Added factor between " << index_of_t << ", " << index_of_tminus1);
     ROS_INFO_STREAM("Graph interaction 1 done");
     
     // Compute log prob for possible poses
     // This gives likelihood of inverse transform (gives pose of t-1 in t)
     vector<RelativePoseResults> relative_pose_results;
-    computeLogProbsForPoseGrid(most_recent_used_scan_, inv_odom_est_displacement, inv_odom_est_angle_disp, false, relative_pose_results);
+    computeLogProbsForPoseGrid(most_recent_used_scan_, inv_odom_est_displacement, inv_odom_est_angle_disp, false, true, relative_pose_results);
 
     // Compute the maximum likelihood translation and rotation (provides maximum likelihood pose of the robot at t-1 relative to t)
     Vector2f maximum_likelihood_scan_offset_position(0, 0);
@@ -439,13 +451,17 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
 
     // compute covariance
     // compute covariance of t-1 with respect to t (not global covariance like we're using now -- also only use observation, not motion)
-    Eigen::Matrix3d recent_inv_cov = computeRelativeCovariance(relative_pose_results);
+//    Eigen::Matrix3d recent_inv_cov = computeRelativeCovariance(relative_pose_results);
 
     // insert into GTSAM, using cov est and MLE (make sure this is t-1 relative to t)
-    noiseModel::Gaussian::shared_ptr cov =   noiseModel::Gaussian::Covariance(recent_inv_cov);
+//    noiseModel::Gaussian::shared_ptr cov =   noiseModel::Gaussian::Covariance(recent_inv_cov);
     Pose2 mle(double(maximum_likelihood_scan_offset_position.x()), double(maximum_likelihood_scan_offset_position.y()), double(maximum_likelihood_scan_offset_angle));
     ROS_INFO_STREAM("Graph interaction 2");
-    graph_->add(BetweenFactor<Pose2>(index_of_t, index_of_tminus1, mle, cov));
+    graph_->add(BetweenFactor<Pose2>(index_of_t, index_of_tminus1, mle, odometryNoise));
+//    ROS_INFO_STREAM("Recent inv cov " << recent_inv_cov);
+    ROS_INFO_STREAM("Added factor between " << index_of_t << ", " << index_of_tminus1);
+    ROS_INFO_STREAM("MLE " << mle.x() << ", " << mle.y() << ", " << mle.theta());
+//    ROS_INFO_STREAM("Cov " << cov);
     ROS_INFO_STREAM("Graph interaction 2 done");
     // inserting initial estimate for pose at t
     Vector2f loc_guess_at_t;
@@ -462,51 +478,77 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
     ROS_INFO_STREAM("Inserting initial estimate");
     initialEstimates_.insert(index_of_t, pose_guess_at_t);
     ROS_INFO_STREAM("Inserting initiali estimate done");
-    //initial_trajectory_estimates_.push_back(pose_guess_at_t);
+
     // If we have more than 1 pose in the trajectory, consider adding a constraint between poses older than this one
     // and the new pose
     if (laser_observations_for_pose_in_trajectory_.size() > 1) {
+        Eigen::Matrix3f t_to_t_min_1_transform;
+
+        t_to_t_min_1_transform << cos(inv_odom_est_angle_disp), -sin(inv_odom_est_angle_disp), inv_odom_est_displacement.x(),
+                sin(inv_odom_est_angle_disp),  cos(inv_odom_est_angle_disp), inv_odom_est_displacement.y(),
+                0,               0,              1;
+
+        Vector2f robot_loc_at_tminus1 = trajectory_estimates_.back().first.first;
+        float robot_angle_at_tminus1 = trajectory_estimates_.back().first.second;
+        Eigen::Matrix3f map_to_t_min_1_tf;
+        map_to_t_min_1_tf << cos(robot_angle_at_tminus1), -sin(robot_angle_at_tminus1), robot_loc_at_tminus1.x(),
+                sin(robot_angle_at_tminus1),  cos(robot_angle_at_tminus1), robot_loc_at_tminus1.y(),
+                0,               0,              1;
+
+        Eigen::Matrix3f t_to_map_tf;
+        t_to_map_tf = t_to_t_min_1_transform * (map_to_t_min_1_tf.inverse());
+
+
         for (size_t i = 0; i < laser_observations_for_pose_in_trajectory_.size()-1; i++) {
 
             // Get initial estimated relative pose from t to i (pose of robot at time i relative to pose of robot at current scan)
-	    Vector2f robot_loc_at_i = trajectory_estimates_[i].first.first;
-	    float robot_angle_at_i = trajectory_estimates_[i].first.second;
-            Vector2f robot_loc_at_tminus1 = trajectory_estimates_.back().first.first;
-	    float robot_angle_at_tminus1 = trajectory_estimates_.back().first.second;
-	    Vector2f unrotated_offset_of_i_at_t = robot_loc_at_i - robot_loc_at_tminus1 + inv_odom_est_displacement_unrotated;
-	    float angle_of_i_at_t = math_util::AngleDiff(robot_angle_at_i, robot_angle_at_tminus1) + inv_odom_est_angle_disp;
-	    Eigen::Rotation2Df rotate_t_to_i(-1*angle_of_i_at_t);
- 		
+	        Vector2f robot_loc_at_i = trajectory_estimates_[i].first.first;
+	        float robot_angle_at_i = trajectory_estimates_[i].first.second;
+
+            Eigen::Matrix3f map_to_i_tf;
+            map_to_i_tf << cos(robot_angle_at_i), -sin(robot_angle_at_i), robot_loc_at_i.x(),
+                    sin(robot_angle_at_i),  cos(robot_angle_at_i), robot_loc_at_i.y(),
+                    0,               0,              1;
+
+            Eigen::Matrix3f t_to_i_tf = t_to_map_tf * map_to_i_tf;
             // Find by combining pose of i relative to t-1 and then use odom estimate to get pose of t-1 in t and combine
-            Vector2f est_pose_robot_at_time_i_rel_to_t  = rotate_t_to_i * unrotated_offset_of_i_at_t; 
-	    float est_angle_robot_at_time_i_rel_to_t = angle_of_i_at_t; 
+            Vector2f est_pose_robot_at_time_i_rel_to_t(t_to_i_tf(0, 2), t_to_i_tf(1, 2));
+            Eigen::Matrix2f rotation_mat;
+            rotation_mat << t_to_i_tf(0, 0), t_to_i_tf(0, 1), t_to_i_tf(1, 0), t_to_i_tf(1, 1);
+            Rotation2Df rotation_obj(rotation_mat);
+            float est_angle_robot_at_time_i_rel_to_t = rotation_obj.angle();
 
             // TODO compute this based on pose estimate (don't want to compare poses that won't have significantly overlapping scans)
             bool poses_close_enough_to_compare =
                     est_pose_robot_at_time_i_rel_to_t.norm() < non_successive_max_pos_difference_;
-            
-	    if (poses_close_enough_to_compare) {
+
+	        if (poses_close_enough_to_compare) {
 
                 vector<RelativePoseResults> relative_pose_results_pose_i;
-                computeLogProbsForPoseGrid(most_recent_used_scan_, est_pose_robot_at_time_i_rel_to_t, est_angle_robot_at_time_i_rel_to_t,
-                                           false, relative_pose_results_pose_i);
+                computeLogProbsForPoseGrid(laser_observations_for_pose_in_trajectory_[i], est_pose_robot_at_time_i_rel_to_t, est_angle_robot_at_time_i_rel_to_t,
+                                           false, false, relative_pose_results_pose_i);
 
                 Vector2f mle_robot_pose_i_rel_to_t(0, 0);
                 float  mle_robot_angle_i_rel_to_t = 0.0;
                 getMaximumLikelihoodScanOffset(relative_pose_results_pose_i, false, mle_robot_pose_i_rel_to_t,
                                                mle_robot_angle_i_rel_to_t);
-
-                // TODO compute covariance of pose at i relative to t (not global covariance like we're using now)
-		// Uncomment when using
-		Eigen::Matrix3d cov_i_rel_to_t = computeRelativeCovariance(relative_pose_results_pose_i);
-                // TODO insert into GTSAM, using cov est and MLE (make sure this is i relative to t)
+                ROS_INFO_STREAM("est offset " << est_pose_robot_at_time_i_rel_to_t << ", " << est_angle_robot_at_time_i_rel_to_t);
+                ROS_INFO_STREAM("ML solution " << mle_robot_pose_i_rel_to_t << ", " << mle_robot_angle_i_rel_to_t);
+                ROS_INFO_STREAM("t to ti tf " << inv_odom_est_displacement << ", " << inv_odom_est_angle_disp);
+                ROS_INFO_STREAM("robot at loc i " << robot_loc_at_i << ", " << robot_angle_at_i);
+                ROS_INFO_STREAM("robot at loc t-1 " << robot_loc_at_tminus1 << ", " << robot_angle_at_tminus1);
+//
+//                // TODO compute covariance of pose at i relative to t (not global covariance like we're using now)
+//		        // Uncomment when using
+//        //		Eigen::Matrix3d cov_i_rel_to_t = computeRelativeCovariance(relative_pose_results_pose_i);
+//                // TODO insert into GTSAM, using cov est and MLE (make sure this is i relative to t)
             	int index_of_i = i+1;
-		Pose2 non_successive_mle(double(mle_robot_pose_i_rel_to_t.x()), double(mle_robot_pose_i_rel_to_t.y()), double(mle_robot_angle_i_rel_to_t));
-		noiseModel::Gaussian::shared_ptr cov_i_t=  noiseModel::Gaussian::Covariance(cov_i_rel_to_t);
-		ROS_INFO_STREAM("Graph interaction 3");
-		graph_->add(BetweenFactor<Pose2>(index_of_t, index_of_i, non_successive_mle, cov_i_t));
-            ROS_INFO_STREAM("Graph interaction 3 done");
-	    }
+		        Pose2 non_successive_mle(double(mle_robot_pose_i_rel_to_t.x()), double(mle_robot_pose_i_rel_to_t.y()), double(mle_robot_angle_i_rel_to_t));
+//        //		noiseModel::Gaussian::shared_ptr cov_i_t=  noiseModel::Gaussian::Covariance(cov_i_rel_to_t);
+        		ROS_INFO_STREAM("Graph interaction 3 " << index_of_t << ", " << index_of_i);
+        		graph_->add(BetweenFactor<Pose2>(index_of_t, index_of_i, non_successive_mle, odometryNoise));
+                ROS_INFO_STREAM("Graph interaction 3 done");
+	        }
         }
     }
 
@@ -520,13 +562,16 @@ void SLAM::ObserveLaserMultipleScansCompared(const std::vector<float> &ranges, f
     // Replace content of trajectory_estimates_ with revised estimates (MAKE SURE THAT trajectory_estimates_ remains the
     // same size as laser_observations_for_pose_in_trajectory_)
     ROS_INFO_STREAM("Results");
-    LevenbergMarquardtParams params;
-    params.maxIterations = 10;
-    Values result = LevenbergMarquardtOptimizer(*graph_, initialEstimates_, params).optimize();
+    GaussNewtonParams params;
+    params.maxIterations = 100;
+    params.verbosity = GaussNewtonParams::Verbosity::VALUES;
+    params.errorTol = 1e-5;
+    Values result = GaussNewtonOptimizer(*graph_, initialEstimates_, params).optimize();
     ROS_INFO_STREAM("Results done");
     Marginals marginals(*graph_, result);
     ROS_INFO_STREAM("Marginals done");
     // Update Trajectory Estimates vector
+
 
     trajectory_estimates_.clear();
     Values::iterator it;
@@ -601,7 +646,7 @@ void SLAM::ObserveLaser(const vector<float>& ranges,
 
     // Compute log prob for possible poses
     vector<RelativePoseResults> relative_pose_results;
-    computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, true, relative_pose_results);
+    computeLogProbsForPoseGrid(current_point_cloud, odom_est_loc_displ, odom_est_angle_displ, true, true, relative_pose_results);
 
     // Compute the maximum likelihood translation and rotation between the previous scan and this one
     Vector2f maximum_likelihood_scan_offset_position;
@@ -633,19 +678,29 @@ Eigen::Matrix3d SLAM::computeRelativeCovariance(const std::vector<RelativePoseRe
     double cumulative_probability=0;
     for (const RelativePoseResults &pose : rel_poses_with_likelihood){
     	double obs_prob = std::exp(pose.obs_log_probability_);
-	Vector2f rel_loc = pose.location_offset_;
-	float rel_angle = pose.rotation_offset_;
-	Eigen::Matrix3d relativePose;
+	    Vector2f rel_loc = pose.location_offset_;
+	    float rel_angle = pose.rotation_offset_;
+	    Eigen::Matrix3d relativePose;
         relativePose << cos(rel_angle), -sin(rel_angle), rel_loc.x(),
                         sin(rel_angle),  cos(rel_angle), rel_loc.y(),
                         0,               0,              1;
-	// Update K
-	K += relativePose * relativePose.transpose() * obs_prob;
-	// Update u
-	u += relativePose * obs_prob;
-	// cumulative prob
-	cumulative_probability += obs_prob;
+	    // Update K
+	    K += relativePose * relativePose.transpose() * obs_prob;
+	    // Update u
+	    u += relativePose * obs_prob;
+	    if (cumulative_probability == 0) {
+	        ROS_INFO_STREAM("Rel loc " << rel_loc);
+	        ROS_INFO_STREAM("Rel angle " << rel_angle);
+	        ROS_INFO_STREAM("obs prob " << obs_prob);
+	        ROS_INFO_STREAM("Relative pose " << relativePose);
+	    }
+	    // cumulative prob
+	    cumulative_probability += obs_prob;
     }
+
+    ROS_INFO_STREAM("K " << K);
+    ROS_INFO_STREAM("U " << u);
+    ROS_INFO_STREAM("Cumulative prob: " << cumulative_probability);
     Eigen::Matrix3d Covariance;
     Covariance = K/cumulative_probability - u*u.transpose()/(std::pow(cumulative_probability, 2)); 
     return Covariance;    

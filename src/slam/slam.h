@@ -125,7 +125,7 @@ class SLAM {
     /**
      * Default configuration for if we should use GTSAM/compare non-successive poses.
      */
-    const bool kDefaultUseGTSAMConfig = true;
+    const bool kDefaultUseGTSAMConfig = false;
 
     /**
      * ROS Parameter name for the minimum change in the position reported by odometry between two evaluated laser scans.
@@ -463,13 +463,17 @@ class SLAM {
      *                                      centered around this position).
      * @param odom_angle_offset[in]         Angular difference since last scan estimated by odometry (should search
      *                                      centered around this rotation).
+     * @param compute_motion_likelihood[in] True if this should compute the motion likelihood, false if it should only
+     *                                      compute the observation likelihood.
+     * @param use_odom_for_search_range[in] True if the search range should be derived from the initial offset guess
+     *                                      (as in subsequent matching), false if we should use a different range.
      * @param relative_pose_results[out]    Results containing each evaluated transform (relative position and rotation
      *                                      from the robot pose at the previous scan to robot pose at the current scan)
      *                                      and the log likelihood of the evaluated transform.
      */
     void computeLogProbsForPoseGrid(const std::vector<Eigen::Vector2f> &current_scan,
                                     const Eigen::Vector2f &odom_position_offset, const float &odom_angle_offset,
-                                    const bool &compute_motion_likelihood,
+                                    const bool &compute_motion_likelihood, const bool &use_odom_for_search_range,
                                     std::vector<RelativePoseResults> &relative_pose_results);
 
     /**
