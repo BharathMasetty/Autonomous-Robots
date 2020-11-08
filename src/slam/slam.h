@@ -103,7 +103,7 @@ class SLAM {
     /**
      * Default configuration for if we should use GTSAM/compare non-successive poses.
      */
-    const bool kDefaultUseGTSAMConfig = false;
+    const bool kDefaultUseGTSAMConfig = true;
 
     /**
      * ROS Parameter name for the minimum change in the position reported by odometry between two evaluated laser scans.
@@ -531,8 +531,6 @@ class SLAM {
                                            float angle_max);
 	
     Eigen::Matrix3d computeRelativeCovariance(const std::vector<RelativePoseResults> &rel_poses_with_likelihood);
-    
-    std::vector<gtsam::Pose2> initial_trajectory_estimates_;
     
     gtsam::NonlinearFactorGraph* graph_;
     gtsam::Values initialEstimates_;
