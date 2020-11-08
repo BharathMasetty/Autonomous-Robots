@@ -75,7 +75,7 @@ class SLAM {
                     float range_max,
                     float angle_min,
                     float angle_max);
-					
+
   // Observe new odometry-reported location.
   void ObserveOdometry(const Eigen::Vector2f& odom_loc,
                        const float odom_angle);
