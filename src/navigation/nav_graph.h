@@ -12,6 +12,8 @@
 #include <ros/ros.h>
 #include <unordered_map>
 
+//using namespace Navigation;
+
 namespace nav_graph {
 
 /**

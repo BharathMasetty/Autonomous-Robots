@@ -532,6 +532,11 @@ class Navigation {
    * @return True if the plan is still valid, false if we need to replan.
    */
   bool planStillValid();
+
+  /**
+   * Update nav complete to indicate if we've reached our goal.
+   */
+  void ReachedGoal();
 };
 
 }  // namespace navigation
