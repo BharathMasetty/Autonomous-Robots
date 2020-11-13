@@ -43,6 +43,14 @@ public:
      */
     std::pair<std::pair<int32_t, int32_t>, int8_t> convertToKeyForm() const;
 
+    Eigen::Vector2f getNodePos() {
+        return node_pos_;
+    }
+
+    float getNodeOrientation() {
+        return node_orientation_;
+    }
+
 private:
 
     /**

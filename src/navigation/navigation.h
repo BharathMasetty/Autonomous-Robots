@@ -24,6 +24,7 @@
 #include <vector>
 #include <unordered_map>
 #include <navigation/nav_graph.h>
+#include <vector_map/vector_map.h>
 
 #include "eigen3/Eigen/Dense"
 
@@ -267,6 +268,14 @@ class Navigation {
   float nav_goal_angle_;
 
   /**
+   * File containing the map.
+   */
+  std::string map_file_;
+
+  // Map of the environment.
+  vector_map::VectorMap map_;
+
+  /**
    * Weight for the clearance in the scoring function. Clearance is good so this should be a positive number.
    */
   double scoring_clearance_weight_;
@@ -294,6 +303,12 @@ class Navigation {
    * some time before having to stop in a "reasonably open" path.
    */
   double open_free_path_len_threshold_;
+
+  /**
+   * Global plan that we have left to execute. Should have nodes removed as we're close enough to them. Will be
+   * replaced when we replan.
+   */
+  std::vector<nav_graph::NavGraphNode> global_plan_to_execute_;
 
   /**
    * Get the position of the base_link of the car relative to the current base_link position after executing the curvature for the given path length.
@@ -497,6 +512,27 @@ class Navigation {
   double getFreePathLengthToClosestPointOfApproach(double goal_in_bl_frame_x, double curvature,
                                                    double obstacle_free_path_len);
   void ReachedGoal();  
+
+  /**
+   * Get a target for local planning.
+   *
+   * @return Local planning target.
+   */
+  std::pair<Eigen::Vector2f, float> getCarrot();
+
+  /**
+   * Run obstacle avoidance with the goal of getting to the carrot.
+   *
+   * @param carrot Target to reach with local planning.
+   */
+  void runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot);
+
+  /**
+   * Check if the plan is still valid and remove any nodes that we've driven past.
+   *
+   * @return True if the plan is still valid, false if we need to replan.
+   */
+  bool planStillValid();
 };
 
 }  // namespace navigation

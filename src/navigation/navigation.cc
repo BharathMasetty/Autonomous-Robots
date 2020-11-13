@@ -65,7 +65,8 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
     robot_omega_(0),
     nav_complete_(true),
     nav_goal_loc_(0, 0),
-    nav_goal_angle_(0) {
+    nav_goal_angle_(0),
+    map_file_(map_file) {
   drive_pub_ = n->advertise<AckermannCurvatureDriveMsg>(
       "ackermann_curvature_drive", 1);
   viz_pub_ = n->advertise<VisualizationMsg>("visualization", 1);
@@ -88,6 +89,8 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
 
   // This initializes the vector with the correct number of commands with curvature 0 and velocity 0
   recent_executed_commands.resize(kNumActLatencySteps);
+
+  map_.Load(map_file_);
 
   InitRosHeader("base_link", &drive_msg_.header);
 }
@@ -481,6 +484,54 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
     recent_executed_commands[0] = drive_msg;
 }
 
+std::pair<Eigen::Vector2f, float> Navigation::getCarrot() {
+    // This function assumes that the first node in the global plan is reachable and that there is at least one node
+    // in the global plan
+
+    // Since this connects nodes using straight lines instead of lattice and doesn't expand the map, this also assumes
+    // that the local planner will be able to steer away from walls enough to handle this approximation.
+    nav_graph::NavGraphNode last_reachable_node = global_plan_to_execute_[0];
+    for (size_t i = 1; i < global_plan_to_execute_.size(); i++) {
+        if (!map_.Intersects(global_plan_to_execute_[i].getNodePos(), robot_loc_)) {
+            last_reachable_node = global_plan_to_execute_[i];
+        } else {
+            break;
+        }
+    }
+    return std::make_pair(last_reachable_node.getNodePos(), last_reachable_node.getNodeOrientation());
+}
+
+
+bool Navigation::planStillValid() {
+    // TODO should also prune nodes that we've gone past (so we only have nodes left to traverse in global plan)
+    return true; // Amanda TODO
+}
+
+void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot) {
+
+    std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
+
+    std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
+            getFreePathLengthsAndClearances(curvatures_to_evaluate);
+
+    std::pair<double, double> curvature_and_dist_to_execute =
+            chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
+    executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
+
+    for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
+        if (curvature_info.first != curvature_and_dist_to_execute.first) {
+            visualization::DrawPathOption(curvature_info.first, curvature_info.second.first,
+                                          curvature_info.second.second, local_viz_msg_);
+        }
+    }
+
+    drawCarPosAfterCurvesExecuted(free_path_len_and_clearance_by_curvature);
+    // Add the best curvature last so it is highlighted in the visualization
+    double best_curvature = curvature_and_dist_to_execute.first;
+    std::pair<double, double> best_curvature_info = free_path_len_and_clearance_by_curvature[best_curvature];
+    visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second+kLengthFromBaseToSafetySide, local_viz_msg_);
+}
+
 void Navigation::Run() {
   visualization::ClearVisualizationMsg(local_viz_msg_);
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
@@ -493,28 +544,16 @@ void Navigation::Run() {
     ROS_ERROR("Still no subscribers to Drive message. Not yet sending velocities.");
     return;
   }
- 
-  std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
 
-  std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
-          getFreePathLengthsAndClearances(curvatures_to_evaluate);
+  // TODO check if reached goal (Kunal)
 
-  std::pair<double, double> curvature_and_dist_to_execute =
-          chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
-executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
-
-  for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
-    if (curvature_info.first != curvature_and_dist_to_execute.first) {
-      visualization::DrawPathOption(curvature_info.first, curvature_info.second.first,
-                                    curvature_info.second.second, local_viz_msg_);
-    }
+  if (!planStillValid()) {
+      // TODO replan
   }
 
-  drawCarPosAfterCurvesExecuted(free_path_len_and_clearance_by_curvature);
-  // Add the best curvature last so it is highlighted in the visualization
-  double best_curvature = curvature_and_dist_to_execute.first;
-  std::pair<double, double> best_curvature_info = free_path_len_and_clearance_by_curvature[best_curvature];
-  visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second+kLengthFromBaseToSafetySide, local_viz_msg_);
+  std::pair<Eigen::Vector2f, float> carrot = getCarrot();
+  runObstacleAvoidance(carrot);
+
   viz_pub_.publish(local_viz_msg_);
 }
 
