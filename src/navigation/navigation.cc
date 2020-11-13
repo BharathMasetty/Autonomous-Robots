@@ -484,27 +484,108 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
     recent_executed_commands[0] = drive_msg;
 }
 
+std::pair<Vector2f, float> Navigation::transformPoint(const Vector2f &src_frame_point, const float &src_frame_angle,
+                                                      const Vector2f &src_frame_pos_rel_target_frame,
+                                                      const float &src_frame_angle_rel_target_frame) {
+
+    // Rotate the point first
+    Eigen::Rotation2Df rotation_mat(src_frame_angle_rel_target_frame);
+    Vector2f rotated_still_src_transl = rotation_mat * src_frame_point;
+
+    // Then translate
+    Vector2f rotated_and_translated = src_frame_pos_rel_target_frame + rotated_still_src_transl;
+    float target_angle = AngleMod(src_frame_angle_rel_target_frame + src_frame_angle);
+
+    return std::make_pair(rotated_and_translated, target_angle);
+
+}
+
+std::pair<Vector2f, float> Navigation::inverseTransformPoint(const Vector2f &src_frame_point,
+                                                             const float &src_frame_angle,
+                                                             const Vector2f &target_frame_pos_rel_src_frame,
+                                                             const float &target_frame_angle_rel_src_frame) {
+    // Translate the point
+    Vector2f translated = src_frame_point - target_frame_pos_rel_src_frame;
+
+    // Then rotate
+    Eigen::Rotation2Df rotation_mat(-target_frame_angle_rel_src_frame);
+    Vector2f rotated_and_translated = rotation_mat * translated;
+
+    float target_angle = AngleMod(src_frame_angle - target_frame_angle_rel_src_frame);
+    return std::make_pair(rotated_and_translated, target_angle);
+}
+
 std::pair<Eigen::Vector2f, float> Navigation::getCarrot() {
-    // This function assumes that the first node in the global plan is reachable and that there is at least one node
-    // in the global plan
+    // This function assumes that the first node in the global_plan_to_execute_ is the one that we are coming from and
+    // the second node is reachable and is the one that we are approaching.
 
     // Since this connects nodes using straight lines instead of lattice and doesn't expand the map, this also assumes
     // that the local planner will be able to steer away from walls enough to handle this approximation.
-    nav_graph::NavGraphNode last_reachable_node = global_plan_to_execute_[0];
-    for (size_t i = 1; i < global_plan_to_execute_.size(); i++) {
+    nav_graph::NavGraphNode last_reachable_node = global_plan_to_execute_[1];
+    for (size_t i = 2; i < global_plan_to_execute_.size(); i++) {
         if (!map_.Intersects(global_plan_to_execute_[i].getNodePos(), robot_loc_)) {
             last_reachable_node = global_plan_to_execute_[i];
         } else {
             break;
         }
     }
-    return std::make_pair(last_reachable_node.getNodePos(), last_reachable_node.getNodeOrientation());
+
+    // Convert the carrot into the base link frame
+    return inverseTransformPoint(last_reachable_node.getNodePos(), last_reachable_node.getNodeOrientation(),
+                                 robot_loc_, robot_angle_);
 }
 
+bool Navigation::isCarInBetweenNodes(const nav_graph::NavGraphNode &node_1, const nav_graph::NavGraphNode &node_2) {
+
+    // Check if the car is in the rectangle centered around the line connecting node 1 and node 2
+    geometry::line2f line_between_nodes(node_1.getNodePos(), node_2.getNodePos());
+    double line_angle = atan2(line_between_nodes.Dir().y(), line_between_nodes.Dir().x());
+    Vector2f car_in_line_frame = inverseTransformPoint(robot_loc_, robot_angle_, node_1.getNodePos(), line_angle).first;
+
+    if ((car_in_line_frame.x() < 0) || (car_in_line_frame.x() >= line_between_nodes.Length())) {
+        return false;
+    }
+
+    if (abs(car_in_line_frame.y()) > kLateralDeviationFromPlanAllowance) {
+        return false;
+    }
+
+    // Car is positioned between the nodes, want to also check the angle
+    float source_node_angle = AngleMod(node_1.getNodeOrientation());
+    float dest_node_angle = AngleMod(node_2.getNodeOrientation());
+    float angle_diff = AngleMod(dest_node_angle - source_node_angle);
+
+    float target_robot_angle = AngleMod(source_node_angle + (angle_diff * (car_in_line_frame.x() / line_between_nodes.Length())));
+    float angle_dist = AngleDist(target_robot_angle, AngleMod(robot_angle_));
+
+    if (angle_dist > kAngularDeviationFromPlanAllowance) {
+        return false;
+    }
+
+    return true;
+}
 
 bool Navigation::planStillValid() {
-    // TODO should also prune nodes that we've gone past (so we only have nodes left to traverse in global plan)
-    return true; // Amanda TODO
+
+    bool is_between_nodes = false;
+    std::size_t immediately_preceding_index;
+    for (std::size_t i = 0; i < global_plan_to_execute_.size() -1; i++) {
+        if (isCarInBetweenNodes(global_plan_to_execute_[i], global_plan_to_execute_[i+1])) {
+            immediately_preceding_index = i;
+            is_between_nodes = true;
+        }
+    }
+    if (!is_between_nodes) {
+        return false;
+    }
+    if (immediately_preceding_index != 0) {
+        // Remove nodes before immediately_preceding_index
+        std::vector<decltype(global_plan_to_execute_)::value_type>(
+                global_plan_to_execute_.begin() + immediately_preceding_index,
+                global_plan_to_execute_.end()).swap(global_plan_to_execute_);
+    }
+
+    return true;
 }
 
 void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot) {
@@ -543,6 +624,10 @@ void Navigation::Run() {
   if (drive_pub_.getNumSubscribers() == 0) {
     ROS_ERROR("Still no subscribers to Drive message. Not yet sending velocities.");
     return;
+  }
+  if (cloud_.empty()) {
+      ROS_ERROR("Still no point cloud. Not sending velocities.");
+      return;
   }
 
   // TODO check if reached goal (Kunal)
