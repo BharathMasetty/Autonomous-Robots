@@ -9,6 +9,7 @@
 #include "eigen3/Eigen/Dense"
 #include <shared/math/math_util.h>
 #include <boost/functional/hash.hpp>
+#include <ros/ros.h>
 #include <unordered_map>
 
 namespace nav_graph {
@@ -52,7 +53,7 @@ public:
         }
     }
 
-    bool operator==(const NavGraphNode &other) {
+    bool operator==(const NavGraphNode &other) const {
         if (grid_aligned_) {
             if (other.grid_aligned_) {
                 return convertToKeyForm() == other.convertToKeyForm();
@@ -157,6 +158,30 @@ namespace nav_graph {
 class NavGraph {
 public:
     // TODO fill in
+
+    /**
+     * Get the neighbors of a given node.
+     *
+     * @param node Node to get neighbors for.
+     *
+     * @return Vector of neighbor nodes.
+     */
+    std::vector<NavGraphNode> getNeighbors(const NavGraphNode &node) {
+        if (neighbors_.find(node) == neighbors_.end()) {
+            ROS_INFO("Unknown query node");
+            return {};
+        }
+        std::vector<uint32_t> neighbor_nums = neighbors_[node];
+        size_t nodes_num = nodes_.size();
+        std::vector<NavGraphNode> neighbor_nodes;
+        for (const auto neighbor_num : neighbor_nums) {
+            if (neighbor_num < nodes_num) {
+                neighbor_nodes.emplace_back(nodes_[neighbor_num]);
+            } else {
+                ROS_ERROR("Neighbor did not exist in nodes list");
+            }
+        }
+    }
 
 private:
 
