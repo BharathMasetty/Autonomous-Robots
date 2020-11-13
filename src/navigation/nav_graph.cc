@@ -3,7 +3,7 @@
 //
 
 #include <navigation/nav_graph.h>
-#include <simple_queue.h>
+#include <navigation/simple_queue.h>
 //using namespace Navigation;
 
 namespace nav_graph {
@@ -45,7 +45,7 @@ void GetPathtoGoal(const std::vector<NavGraphNode>& nodes_, const std::unordered
      const Eigen::Vector2f& nav_start_loc_){
     std::unordered_map<NavGraphNode, NavGraphNode> came_from;
     std::unordered_map<NavGraphNode, double> cost_so_far;
-    simple_queue<NavGraphNode, double> frontier;
+    SimpleQueue<NavGraphNode,double > frontier;
 /*    
     frontier.put(nav_start_loc_ , 0);
     
