@@ -11,6 +11,8 @@
 #include <boost/functional/hash.hpp>
 #include <unordered_map>
 
+//using namespace Navigation;
+
 namespace nav_graph {
 
 /**

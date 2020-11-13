@@ -93,9 +93,14 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
 }
 
 void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
+    nav_goal_loc_ = loc;
+    nav_goal_angle_ = angle;
+    nav_complete_ = false;   
 }
 
 void Navigation::UpdateLocation(const Vector2f& loc, float angle) {
+    robot_loc_ = loc;
+    robot_angle_ = angle;
 }
 
 void Navigation::UpdateOdometry(const Vector2f& loc,
@@ -512,6 +517,17 @@ executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_di
   visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second+kLengthFromBaseToSafetySide, local_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
+
+void Navigation::ReachedGoal(){
+    if (nav_goal_loc_.x() == robot_loc_.x() && nav_goal_loc_.y() == robot_loc_.y()){
+        nav_complete_ = true;
+    }
+}
+
+
+
+
+
 
  
 }  // namespace navigation
