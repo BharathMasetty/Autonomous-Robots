@@ -23,6 +23,7 @@
 #include <amrl_msgs/VisualizationMsg.h>
 #include <vector>
 #include <unordered_map>
+#include <navigation/nav_graph.h>
 
 #include "eigen3/Eigen/Dense"
 
