@@ -3,8 +3,7 @@
 //
 
 #include <navigation/nav_graph.h>
-#include<queue>
-//#include<simple_queue.h>
+#include <simple_queue.h>
 //using namespace Navigation;
 
 namespace nav_graph {
@@ -26,28 +25,28 @@ double Heurestic(const Eigen::Vector2f& node_pos_,const Eigen::Vector2f& nav_goa
 }
 
 double ComputeCost(const NavGraphNode& current, const NavGraphNode& next){
-    Eigen::Vector2f current_pos = current.node_pos_;
-    Eigen::Vector2f next_pos = next.node_pos_; 
-    double current_angle = current.node_orientation_;
-    double next_angle = next.node_orientation_;
+    Eigen::Vector2f current_pos = current.getNodePos();
+    Eigen::Vector2f next_pos = next.getNodePos(); 
+    double current_angle = current.getNodeOrientation();
+    double next_angle = next.getNodeOrientation();
     double x_difference_1 = std::abs(current_pos.x() - next_pos.x());
     double y_difference_1 = std::abs(current_pos.y() - next_pos.y());
     double squared_euclidean_1 = std::pow(x_difference_1,2) + std::pow(y_difference_1,2);
     if (current_angle == next_angle){
         return std::abs(std::sqrt(squared_euclidean_1)); 
     }
-    else (){
+    else{
        return 3.14/2 * std::abs(std::sqrt(squared_euclidean_1));
     }
 }
-/*
+
 //we also need to define the start and goal nodes (assuming both are global variables)
 void GetPathtoGoal(const std::vector<NavGraphNode>& nodes_, const std::unordered_map<NavGraphNode, std::vector<uint32_t>>& neighbors_, const Eigen::Vector2f& nav_goal_loc_, 
      const Eigen::Vector2f& nav_start_loc_){
     std::unordered_map<NavGraphNode, NavGraphNode> came_from;
     std::unordered_map<NavGraphNode, double> cost_so_far;
-    std::priority_queue<NavGraphNode, double> frontier;
-    
+    simple_queue<NavGraphNode, double> frontier;
+/*    
     frontier.put(nav_start_loc_ , 0);
     
     came_from[nav_start_loc_] = nav_start_loc_;
@@ -64,37 +63,9 @@ void GetPathtoGoal(const std::vector<NavGraphNode>& nodes_, const std::unordered
         
         for (NavGraphNode next :  ) {                       //enter the neighbors
             double new_cost = cost_so_far[current] + /
-
 */
-
-}                        
-
-
 }
-     
 
-
-
-
-
-
-
-
-
-
-
-
-
-}  
-
-
-
-
-
-
-
-
-
-
+  
 
 } // end nav_graph
