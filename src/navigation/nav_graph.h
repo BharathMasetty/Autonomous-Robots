@@ -9,6 +9,7 @@
 #include "eigen3/Eigen/Dense"
 #include <shared/math/math_util.h>
 #include <boost/functional/hash.hpp>
+#include <ros/ros.h>
 #include <unordered_map>
 
 //using namespace Navigation;
@@ -30,11 +31,42 @@ static const double kAngularOptionsFromNavGraph = math_util::DegToRad(90);
 class NavGraphNode {
 public:
 
-    NavGraphNode(const Eigen::Vector2f &node_pos, const float &node_orientation) : node_pos_(node_pos),
-    node_orientation_(node_orientation) {}
+    /**
+     * Create the nav graph node.
+     *
+     * @param node_pos                  Position of the node. Each component should be a multiple of kGridResolution
+     *                                  unless this is a start/goal node.
+     * @param node_orientation          Orientation of the node (orientation that car will be at when entering/exiting
+     *                                  the node. Should be a multiple of kAngularOptionsFromNavGraph unless
+     *                                  grid_aligned is false.
+     * @param grid_aligned              True if the object aligns with the grid, false if it doesn't. Should only be
+     *                                  false for start/goal nodes that are dynamically added to the graph.
+     * @param id_for_not_grid_aligned   Identifier to distinguish between non-grid-aligned (start/goal) nodes. Must be
+     *                                  unique for nodes where grid_aligned is false. Value doesn't matter for other
+     *                                  nodes.
+     */
+    NavGraphNode(const Eigen::Vector2f &node_pos, const float &node_orientation, const bool &grid_aligned,
+                 const uint32_t &id_for_not_grid_aligned) : node_pos_(node_pos),
+                 node_orientation_(node_orientation),
+                 grid_aligned_(grid_aligned),
+                 id_for_not_grid_aligned_(id_for_not_grid_aligned) {
+        if (grid_aligned) {
+            id_for_not_grid_aligned_ = kGridAlignedIdentifierValue;
+        }
+    }
 
-    bool operator==(const NavGraphNode &other) {
-        return convertToKeyForm() == other.convertToKeyForm();
+    bool operator==(const NavGraphNode &other) const {
+        if (grid_aligned_) {
+            if (other.grid_aligned_) {
+                return convertToKeyForm() == other.convertToKeyForm();
+            } else {
+                return false;
+            }
+        }
+        if (other.grid_aligned_) {
+            return false;
+        }
+        return id_for_not_grid_aligned_ == other.id_for_not_grid_aligned_;
     }
 
     /**
@@ -51,17 +83,50 @@ public:
         return node_orientation_;
     }
 
+    /**
+     * Get if the node is grid aligned and if not, populate the non_aligned_identifier field with the identifier for
+     * the node (used to distinguish start and end).
+     *
+     * @param non_aligned_identifier[out] Identifier for non-grid aligned nodes. Will not be modified if this function
+     * returns true.
+     *
+     * @return True if the node is grid aligned, false if not.
+     */
+    bool isGridAligned(uint32_t &non_aligned_identifier) const {
+        if (!grid_aligned_) {
+            non_aligned_identifier = id_for_not_grid_aligned_;
+            return false;
+        }
+        return true;
+    }
+
 private:
 
     /**
-     * Location of the node. X and y should both be multiples of kGridResolution.
+     * Value that the grid aligned nodes will have for the non-grid-aligned identifier. Will overwrite what is passed
+     * in constructor to ensure this value doesn't matter for grid aligned nodes.
+     */
+    static const uint32_t kGridAlignedIdentifierValue = 6482;
+
+    /**
+     * Location of the node. X and y should both be multiples of kGridResolution (unless grid_aligned_ is false).
      */
     Eigen::Vector2f node_pos_;
 
     /**
-     * Orientation for the node. Should be a multiple of kAngularOptonsFromNavGraph
+     * Orientation for the node. Should be a multiple of kAngularOptonsFromNavGraph (unless grid_aligned_ is false).
      */
     float node_orientation_;
+
+    /**
+     * True if the node is aligned with the grid, false if it is not (start or goal).
+     */
+    bool grid_aligned_;
+
+    /**
+     * Identifier to distinguish between non-grid aligned nodes (should just be start/end).
+     */
+    uint32_t id_for_not_grid_aligned_;
 };
 }
 
@@ -77,6 +142,11 @@ namespace std {
             boost::hash_combine(seed, key_form.first.first);
             boost::hash_combine(seed, key_form.first.second);
             boost::hash_combine(seed, key_form.second);
+
+            uint32_t non_grid_id;
+            bool grid_aligned = node.isGridAligned(non_grid_id);
+            boost::hash_combine(seed, grid_aligned);
+            boost::hash_combine(seed, non_grid_id);
             return seed;
         }
     };
@@ -90,6 +160,30 @@ namespace nav_graph {
 class NavGraph {
 public:
     // TODO fill in
+
+    /**
+     * Get the neighbors of a given node.
+     *
+     * @param node Node to get neighbors for.
+     *
+     * @return Vector of neighbor nodes.
+     */
+    std::vector<NavGraphNode> getNeighbors(const NavGraphNode &node) {
+        if (neighbors_.find(node) == neighbors_.end()) {
+            ROS_INFO("Unknown query node");
+            return {};
+        }
+        std::vector<uint32_t> neighbor_nums = neighbors_[node];
+        size_t nodes_num = nodes_.size();
+        std::vector<NavGraphNode> neighbor_nodes;
+        for (const auto neighbor_num : neighbor_nums) {
+            if (neighbor_num < nodes_num) {
+                neighbor_nodes.emplace_back(nodes_[neighbor_num]);
+            } else {
+                ROS_ERROR("Neighbor did not exist in nodes list");
+            }
+        }
+    }
 
 private:
 
