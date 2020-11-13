@@ -265,6 +265,20 @@ class Navigation {
   const float kLengthFromAxleToSafetyFront = m + 0.5*(l+b);
   const float kLengthFromBaseToSafetySide = 0.5 * w + m;
 
+  /**
+   * Amount to allow the car to deviate from the straight line distance between two nodes on planning graph. Must be at
+   * least as large as the deviation required to execute the optimal curve between the two nodes, given their angles.
+   *
+   * Effectively draw a rectangle with each node at the center of opposite ends and the sides of the edges adjacent to
+   * the ends with the nodes should be this distance from the node.
+   */
+  const float kLateralDeviationFromPlanAllowance = 1.25;
+
+  /**
+   * Maximum angular deviation from the plan. Does take angle along arcs between nodes into account.
+   */
+  const float kAngularDeviationFromPlanAllowance = M_PI_4;
+
   // Whether navigation is complete.
   bool nav_complete_;
   // Navigation goal location.
@@ -370,6 +384,44 @@ class Navigation {
    */
   void addCarDimensionsAndSafetyMarginAtPosToVisMessage(const std::pair<Eigen::Vector2f, double> &car_origin_loc,
       const uint32_t &car_color_loc, const uint32_t &safety_color, amrl_msgs::VisualizationMsg &viz_msg);
+
+  /**
+   * Get the pose of the src frame object in the target frame given the pose of the source frame in the target frame.
+   *
+   * Ex. get the pose of an object in the map frame given the pose in the base link frame and the pose of the base
+   * link in the robot's frame.
+   *
+   * @param src_frame_point                     Location of the point in the source frame (base link frame in the example).
+   * @param src_frame_angle                     Angle of the point in the source frame (base link frame in the example).
+   * @param src_frame_pos_rel_target_frame      Position of the origin of the source frame in the target frame
+   *                                            (position of the base link frame in the map frame in the example).
+   * @param src_frame_angle_rel_target_frame    Angle of the source frame relative to the target frame (angle from map
+   *                                            x axis to base link x axis in the example).
+   *
+   * @return Pose of point in the target frame (map frame in this example).
+   */
+  std::pair<Eigen::Vector2f, float> transformPoint(const Eigen::Vector2f &src_frame_point, const float &src_frame_angle,
+                                                   const Eigen::Vector2f &src_frame_pos_rel_target_frame,
+                                                   const float &src_frame_angle_rel_target_frame);
+
+  /**
+   * Get the pose of the src frame object in the target frame given the pose of the target frame in the source frame.
+   *
+   * Ex. get the pose of an object relative to base link given the pose of the object in the map frame and the pose of
+   * the robot in the map frame
+   *
+   * @param src_frame_point                     Location of the point in the source frame (map frame in the example).
+   * @param src_frame_angle                     Angle of the point in the source frame (map frame in the example).
+   * @param target_frame_pos_rel_src_frame      Position of the origin of the target frame in the src frame
+   *                                            (position of the base link frame in the map frame in the example).
+   * @param target_frame_angle_rel_src_frame    Angle of the target frame relative to the src frame (angle from map
+   *                                            x axis to base link x axis in the example).
+   * @return Pose of point in the target frame (base link frame in this example).
+   */
+  std::pair<Eigen::Vector2f, float> inverseTransformPoint(const Eigen::Vector2f &src_frame_point,
+                                                          const float &src_frame_angle,
+                                                          const Eigen::Vector2f &target_frame_pos_rel_src_frame,
+                                                          const float &target_frame_angle_rel_src_frame);
 
   /**
    * Add components to the visualization message for seeing the car size and car+safety margin size.
@@ -532,7 +584,19 @@ class Navigation {
   void runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot);
 
   /**
-   * Check if the plan is still valid and remove any nodes that we've driven past.
+   * True if the car is roughly along the path between the two nodes, false if it is outside these nodes. Car can
+   * deviate somewhat in distance from the line connecting the node and the curve, but if it is too far, this returns
+   * false.
+   *
+   * @param node_1 Node that the car will be at or past if this returns true.
+   * @param node_2 Node that the car will be immediately preceding if this returns true.
+   *
+   * @return True if the car is close enough to the path between node 1 and node 2 to be considered between the nodes.
+   */
+  bool isCarInBetweenNodes(const nav_graph::NavGraphNode &node_1, const nav_graph::NavGraphNode &node_2);
+
+  /**
+   * Check if the plan is still valid and remove any nodes that we've driven past (except the one immediately preceding the bot).
    *
    * @return True if the plan is still valid, false if we need to replan.
    */
