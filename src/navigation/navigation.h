@@ -495,6 +495,7 @@ class Navigation {
    */
   double getFreePathLengthToClosestPointOfApproach(double goal_in_bl_frame_x, double curvature,
                                                    double obstacle_free_path_len);
+  
 };
 
 }  // namespace navigation

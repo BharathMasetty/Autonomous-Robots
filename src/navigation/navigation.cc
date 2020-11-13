@@ -95,7 +95,7 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
 void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
 }
 
-void Navigation::UpdateLocation(const Eigen::Vector2f& loc, float angle) {
+void Navigation::UpdateLocation(const Vector2f& loc, float angle) {
 }
 
 void Navigation::UpdateOdometry(const Vector2f& loc,
@@ -513,4 +513,5 @@ executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_di
   viz_pub_.publish(local_viz_msg_);
 }
 
+ 
 }  // namespace navigation
