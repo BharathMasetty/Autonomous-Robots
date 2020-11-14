@@ -93,6 +93,13 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
   map_.Load(map_file_);
 
   InitRosHeader("base_link", &drive_msg_.header);
+
+  // Fake global plan for testing in sim
+//  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-22, 8.432), 0, false, 8576));
+//  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-17.262, 8.432), 0, false, 1));
+//  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-14.033, 8.662), M_PI_2, false, 2));
+//  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-14.033, 11.662), M_PI_2, false, 3));
+//  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-13.412, 18), M_PI_2, false, 4));
 }
 
 void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
@@ -218,58 +225,91 @@ std::vector<double> Navigation::getCurvaturesToEvaluate() {
     return curvatures_to_evaluate_;
 }
 
-double Navigation::getFreePathLengthToClosestPointOfApproach(double goal_in_bl_frame_x, double curvature,
-                                                             double obstacle_free_path_len) {
-    if (curvature == 0.0) {
-        return obstacle_free_path_len;
+std::unordered_map<double, double> Navigation::getPathLengthForClosestPointOfApproach(
+        const Vector2f &carrot, const std::vector<double> &curvatures) {
+    std::unordered_map<double, double> path_len_for_closest_point_of_approach;
+    for (const double &curvature : curvatures) {
+        if (curvature == 0.0) {
+            path_len_for_closest_point_of_approach[curvature] = carrot.x();
+        } else {
+            double rad_of_turn = 1.0 / curvature;
+            double x_target = carrot.x();
+            double y_target = carrot.y();
+            if (rad_of_turn < 0) {
+                y_target = -1 * y_target;
+            }
+            rad_of_turn = abs(rad_of_turn);
+
+            double numerator = pow(rad_of_turn, 2) + pow(x_target, 2) + pow(y_target - rad_of_turn, 2) -
+                    carrot.squaredNorm();
+            double denom = 2 * rad_of_turn * sqrt((pow(x_target, 2) + pow(y_target - rad_of_turn, 2)));
+            double angle = acos(numerator / denom);
+
+            // Make sure angle is in right quadrant
+            if (x_target < 0) {
+                angle = M_2_PI - angle;
+            }
+
+            // Arc length is radius times angle
+            path_len_for_closest_point_of_approach[curvature] = rad_of_turn * angle;
+        }
     }
+    return path_len_for_closest_point_of_approach;
+}
 
-    double rad_of_turn = 1.0 / abs(curvature);
+double Navigation::getOptimalCurvatureForCarrot(const Eigen::Vector2f &carrot_location) {
+    double curvature = (2 * carrot_location.y()) / carrot_location.squaredNorm();
 
-    // This is the angle between the line from the center of turning to the goal position
-    double arc_angle = atan(goal_in_bl_frame_x / rad_of_turn);
-
-    // arc length is turning radius times angle
-    return std::min(obstacle_free_path_len, arc_angle * rad_of_turn);
+    // Make sure curvature is within bounds
+    curvature = std::max(-1 * kMaxCurvature, std::min(kMaxCurvature, curvature));
+    return curvature;
 }
 
 std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
-        std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map) {
+        std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map,
+        const std::pair<Eigen::Vector2f, float> &carrot) {
 
-    // TODO should we change the free path length to the one that will get us closest to the intermediate goal or keep
-    //  it as just obstacle free?
-    std::vector<double> reasonably_open_curvatures = getCurvaturesWithReasonablyOpenPaths(
-            curvature_and_obstacle_limitations_map);
+    // Get the curvatures with reasonably open paths
+    // These are already limited by the closest point of approach to the goal, so we don't need to consider if we'll
+    // overshoot the goal.
+    std::vector<double> reasonably_open_curvatures = getCurvaturesWithReasonablyOpenPaths(curvature_and_obstacle_limitations_map);
 
     double best_curvature;
     if (reasonably_open_curvatures.empty()) {
-        ROS_INFO("No reasonably open paths");
+        ROS_INFO("Close to carrot or no reasonably open paths");
 
         // If there are no reasonably open curvatures, use the fallback weighing function to weigh between the free
         // path length and other considerations (proximity to goal, clearance)
-        best_curvature = chooseCurvatureForNextTimestepNoOpenOptions(curvature_and_obstacle_limitations_map);
+        best_curvature = chooseCurvatureForNextTimestepNoOpenOptions(curvature_and_obstacle_limitations_map, carrot);
     } else {
 
-        // Get the smallest curvature, since that is the most direct path to the goal.
+        // Find the optimal curvature and then pick the one that is resonably open that is closest to that optimal
+        // curvature.
         best_curvature = kMaxCurvature;
+        double diff_from_best_curvature = std::numeric_limits<double>::infinity();
+        double optimal_curvature_for_carrot = getOptimalCurvatureForCarrot(carrot.first);
+
         for (const double &curvature : reasonably_open_curvatures) {
-            if (abs(curvature) <= abs(best_curvature)) {
-                if (abs(curvature) == abs(best_curvature)) {
+            float diff_from_curvature = abs(curvature - optimal_curvature_for_carrot);
+            if (diff_from_curvature <= diff_from_best_curvature) {
+                if (diff_from_curvature == diff_from_best_curvature) {
                     // If they're the same curvature, but only left vs right, use the one with the higher clearance
                     if (curvature_and_obstacle_limitations_map.at(curvature).second >
-                    curvature_and_obstacle_limitations_map.at(best_curvature).second) {
+                        curvature_and_obstacle_limitations_map.at(best_curvature).second) {
                         best_curvature = curvature;
+                        diff_from_best_curvature = diff_from_curvature;
                     }
                 } else {
                     best_curvature = curvature;
+                    diff_from_best_curvature = diff_from_curvature;
                 }
             }
         }
     }
 
-    return std::make_pair(best_curvature,
-            getFreePathLengthToClosestPointOfApproach(kIntermediateGoalX, best_curvature,
-                    curvature_and_obstacle_limitations_map.at(best_curvature).first));
+    // Don't need to shrink free path length to closest point of approach because max to closest point of approach was
+    // already done before computing the free path length.
+    return std::make_pair(best_curvature, curvature_and_obstacle_limitations_map.at(best_curvature).first);
 }
 
 bool Navigation::isPathReasonablyOpen(const double &free_path_len, const double &clearance) {
@@ -295,16 +335,20 @@ std::vector<double> Navigation::getCurvaturesWithReasonablyOpenPaths(
     return reasonably_open_curvatures;
 }
 
-double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map) {
+double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(
+        std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map,
+        const std::pair<Eigen::Vector2f, float> &carrot) {
 
     std::pair<double, double> best_curvature_and_score = std::make_pair(kMaxCurvature, -1 * std::numeric_limits<double>::infinity());
+
+    double best_curvature = getOptimalCurvatureForCarrot(carrot.first);
 
     for (const auto &curvature_info : curvature_and_obstacle_limitations_map) {
         double curvature = curvature_info.first;
         double distance = curvature_info.second.first;
         double clearance = curvature_info.second.second;
 
-        double score = scoreCurvature(curvature, distance, clearance);
+        double score = scoreCurvature(curvature, distance, clearance, best_curvature);
         if (best_curvature_and_score.second < score) {
             best_curvature_and_score = std::make_pair(curvature, score);
         }
@@ -312,21 +356,23 @@ double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(std::unordered_ma
     return best_curvature_and_score.first;
 }
 
-double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance) {
-    return free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature));
+double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance, const double &optimal_curvature) {
+    return free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
-        const std::vector<double> &curvatures_to_evaluate) {
+        const std::unordered_map<double, double> &curvatures_and_free_path_len_for_closest_point_of_approach) {
 
     std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature;
-    for (const double &curvature : curvatures_to_evaluate) {
-        free_path_len_and_clearance_by_curvature[curvature] = getFreePathLengthAndClearance(curvature);
+    for (const auto &curvature_and_closest_approach_arc_len : curvatures_and_free_path_len_for_closest_point_of_approach) {
+        double curvature = curvature_and_closest_approach_arc_len.first;
+        double free_path_len_for_closest_point_of_approach = curvature_and_closest_approach_arc_len.second;
+        free_path_len_and_clearance_by_curvature[curvature] = getFreePathLengthAndClearance(curvature, free_path_len_for_closest_point_of_approach);
     }
     return free_path_len_and_clearance_by_curvature;
 }
 
-std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double &curvature) {
+std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double &curvature, const double &free_path_len_for_closest_point_of_approach) {
 
     // TODO: Bharath: Keep thinking of a better way to do this 
     float free_path_len = std::numeric_limits<float>::infinity();
@@ -353,7 +399,8 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     std::vector<double> notHitting_alpha;
     // Initializing freePathalpha at pi radians
     double freePathalpha = 3.14;
-    float hittingSign = abs(curvature)/curvature; 
+    float hittingSign = abs(curvature)/curvature;
+
     
     if (abs(curvature) > 0) {
         IC.x() = 0.0;
@@ -361,11 +408,11 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
         r = abs(1 / curvature);
 
         // Set the free path length to the the circumference of the circle around the center of turning (max)
-        free_path_len = 2.0 * M_PI * r;
+        free_path_len = free_path_len_for_closest_point_of_approach;
         r_min = r - kLengthFromBaseToSafetySide;
-	float r_min_square = std::pow(r_min, 2);
+        float r_min_square = std::pow(r_min, 2);
         r_max = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r+ kLengthFromBaseToSafetySide, 2) , 0.5);
-	r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5);
+        r_fc = std::pow(std::pow(kLengthFromAxleToSafetyFront, 2) + std::pow(r - kLengthFromBaseToSafetySide, 2) , 0.5);
     
         // Converting cloud to polar
         for(int i=startIndex; i<=endIndex; i++) {
@@ -379,7 +426,7 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
                 // Side Hit
                 if (r_p < r_fc){
                     float x = std::pow(r_p_square - r_min_square, 0.5);
-		    pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y() - kLengthFromBaseToSafetySide*hittingSign, 2);
+                    pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y() - kLengthFromBaseToSafetySide*hittingSign, 2);
                 }
 
                 // Front Hit
@@ -417,14 +464,15 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 
     // When moving along a straight line
     if (curvature == 0.0) {
+        free_path_len = free_path_len_for_closest_point_of_approach;
         // default
-	std::vector<Eigen::Vector2f> notHittingPoints;
+        std::vector<Eigen::Vector2f> notHittingPoints;
         for (int i=startIndex; i<=endIndex; i++) {
             if (abs(cloud_[i].y()) <= kLengthFromBaseToSafetySide) {
                 free_path_len = std::min(free_path_len, cloud_[i].x() - kLengthFromAxleToSafetyFront);
-            }else{
-	    	notHittingPoints.push_back(cloud_[i]);
-	    }
+            } else{
+                notHittingPoints.push_back(cloud_[i]);
+            }
         }
         for (unsigned int i=0; i<=notHittingPoints.size(); i++) {
             double new_clearance = abs(notHittingPoints[i].y()) - kLengthFromBaseToSafetySide;
@@ -565,6 +613,10 @@ bool Navigation::isCarInBetweenNodes(const nav_graph::NavGraphNode &node_1, cons
     return true;
 }
 
+void Navigation::drawCarrot(const Eigen::Vector2f &carrot) {
+    visualization::DrawCross(carrot, kCarrotAndGlobalPlanCrossSize, kCarrotColor, local_viz_msg_);
+}
+
 bool Navigation::planStillValid() {
 
     bool is_between_nodes = false;
@@ -591,12 +643,14 @@ bool Navigation::planStillValid() {
 void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot) {
 
     std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
+    std::unordered_map<double, double> free_path_len_for_closest_point_of_approach = getPathLengthForClosestPointOfApproach(
+            carrot.first, curvatures_to_evaluate);
 
     std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
-            getFreePathLengthsAndClearances(curvatures_to_evaluate);
+            getFreePathLengthsAndClearances(free_path_len_for_closest_point_of_approach);
 
     std::pair<double, double> curvature_and_dist_to_execute =
-            chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature);
+            chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature, carrot);
     executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
 
     for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
@@ -613,8 +667,19 @@ void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &c
     visualization::DrawPathOption(best_curvature, best_curvature_info.first, best_curvature_info.second+kLengthFromBaseToSafetySide, local_viz_msg_);
 }
 
+void Navigation::displayGlobalPath() {
+    for (size_t i = 1; i < global_plan_to_execute_.size(); i++) {
+        visualization::DrawCross(global_plan_to_execute_[i].getNodePos(), kCarrotAndGlobalPlanCrossSize,
+                                 kGlobalPlanColor, global_viz_msg_);
+        // TODO we should probably draw the arcs instead of straight line connections.
+        visualization::DrawLine(global_plan_to_execute_[i - 1].getNodePos(), global_plan_to_execute_[i].getNodePos(),
+                                kGlobalPlanColor, global_viz_msg_);
+    }
+}
+
 void Navigation::Run() {
   visualization::ClearVisualizationMsg(local_viz_msg_);
+  visualization::ClearVisualizationMsg(global_viz_msg_);
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
 
   // Create Helper functions here
@@ -630,20 +695,27 @@ void Navigation::Run() {
       return;
   }
 
-  // TODO check if reached goal (Kunal)
+  ReachedGoal();
+  if (nav_complete_) {
+      ROS_INFO_STREAM("No further to go. Will wait for new goal.");
+      return;
+  }
 
+  displayGlobalPath();
   if (!planStillValid()) {
       // TODO replan
   }
 
   std::pair<Eigen::Vector2f, float> carrot = getCarrot();
+  drawCarrot(carrot.first);
   runObstacleAvoidance(carrot);
 
+  viz_pub_.publish(global_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
 
 void Navigation::ReachedGoal(){
-    if ((nav_goal_loc_ - robot_loc_).norm() < kGoalTolerance){
+    if ((nav_goal_loc_ - robot_loc_).norm() < kGoalTolerance) {
         nav_complete_ = true;
     }
 }
