@@ -98,7 +98,7 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
 void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
     nav_goal_loc_ = loc;
     nav_goal_angle_ = angle;
-    nav_complete_ = false;   
+    nav_complete_ = false;
 }
 
 void Navigation::UpdateLocation(const Vector2f& loc, float angle) {
@@ -558,15 +558,8 @@ void Navigation::Run() {
 }
 
 void Navigation::ReachedGoal(){
-    if ((nav_goal_loc_ - robot_loc_).norm() < 0.05){
+    if ((nav_goal_loc_ - robot_loc_).norm() < kGoalTolerance){
         nav_complete_ = true;
     }
 }
-
-
-
-
-
-
- 
 }  // namespace navigation

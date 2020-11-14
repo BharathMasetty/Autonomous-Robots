@@ -93,6 +93,11 @@ class Navigation {
   const double kStopDist = 0.03;
 
   /**
+   * Distance that we must get within to say we've reached the goal.
+   */
+  const double kGoalTolerance = 0.1;
+
+  /**
    * Amount of time between each loop execution.
    */
   const double kLoopExecutionDelay = (1.0 / 20.0);
