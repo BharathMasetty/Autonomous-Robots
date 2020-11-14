@@ -558,7 +558,7 @@ void Navigation::Run() {
 }
 
 void Navigation::ReachedGoal(){
-    if (nav_goal_loc_.x() == robot_loc_.x() && nav_goal_loc_.y() == robot_loc_.y()){
+    if ((nav_goal_loc_ - robot_loc_).norm() < 0.05){
         nav_complete_ = true;
     }
 }
