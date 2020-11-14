@@ -123,12 +123,6 @@ class Navigation {
   const int kNumCurvaturesToEval = 41;
 
   /**
-   * X position of intermediate goal in base_link frame. Robot should try to get to this
-   * point for each iteration.
-   */
-  const double kIntermediateGoalX = 4.0;
-
-  /**
    * Default value for the clearance that a path must have to be considered "reasonably open".
    */
   const double kDefaultDesiredClearance = 0.2;
@@ -228,6 +222,21 @@ class Navigation {
    * Color for drawing the predicted safety margin boundaries when the path is reasonably open.
    */
   const uint32_t kPredictedOpenPathSafetyMarginColor = 0x84f542;
+
+  /**
+   * Color of the cross for the carrot.
+   */
+  const uint32_t kCarrotColor = 0x7932a8;
+
+  /**
+   * Color to display the global plan and its nodes in.
+   */
+  const uint32_t kGlobalPlanColor = 0x435614;
+
+  /**
+   * Size of the cross for the carrot and global plan points.
+   */
+  const float kCarrotAndGlobalPlanCrossSize = 0.4;
 
   /**
    * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
@@ -451,11 +460,23 @@ class Navigation {
    *
    * @param curvature_and_obstacle_limitations_map  Map of curvature to a pair of the free path length and clearance for
    *                                                the curvature.
+   * @param carrot                                  Contains the location that the car should try to get to with
+   *                                                respect to the base_link frame.
    *
    * @return Pair of curvature to follow and distance for which to follow it.
    */
   std::pair<double, double> chooseCurvatureForNextTimestep(
-          std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map);
+          std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map,
+          const std::pair<Eigen::Vector2f, float> &carrot);
+
+  /**
+   * Get the curvature that would bring the car exactly to the given location.
+   *
+   * @param carrot_location Location to get to with the car (relative to base_link frame).
+   *
+   * @return Curvature that will bring the car to the carrot.
+   */
+  double getOptimalCurvatureForCarrot(const Eigen::Vector2f &carrot_location);
 
   /**
    * If there are several fairly open paths, we'll want to take the one that has the lowest curvature, because that
@@ -473,17 +494,19 @@ class Navigation {
 
   /**
    * Pick the curvature for the next timestep assuming there are no "reasonably open" paths. This takes into account
-   * the curvature (the absolute value of which we want to minimize, because increased absolute curvature increases how
-   * much we are deviating from the goal along the x axis), as well as the clearance (which we want to maximize) and
-   * the free path length (which we want to maximize).
+   * the curvature (which we want to make as close to the optimal curvature for the carrot as possible), as well as the
+   * clearance (which we want to maximize) and the free path length (which we want to maximize).
    *
    * @param curvature_and_obstacle_limitations_map  Map of curvature to a pair of the free path length and clearance for
    *                                                the curvature.
+   * @param carrot                                  Location to get to with the car (used to calculate optimal
+   *                                                curvature).
    *
    * @return Best curvature.
    */
   double chooseCurvatureForNextTimestepNoOpenOptions(
-          std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map);
+          std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map,
+          const std::pair<Eigen::Vector2f, float> &carrot);
 
   /**
    * Score the curvature for the next timestep.
@@ -497,10 +520,12 @@ class Navigation {
    *                        length, not the path length that we should follow to get closest to our goal, which may be
    *                        less than the obstacle-free path length)
    * @param clearance       Minimum clearance to obstacles along this curvature.
+   * @param best_curvature  Optimal curvature for getting to the carrot location.
    *
    * @return Score for the curvature.
    */
-  double scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance);
+  double scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance,
+                        const double &best_curvature);
 
   /**
    * Get the free path length and clearance (distance to the closest obstacle) for each of the given curvatures.
@@ -509,13 +534,15 @@ class Navigation {
    * in batch if you can reuse computations. Delete the single-curvature function if you end up doing multiple at once.
    * As long as this function's signature is consistent, that's fine.
    *
-   * @param curvatures_to_evaluate Curvatures (inverse of radius of turning) to evaluate.
+   * @param curvatures_to_evaluate Curvatures (inverse of radius of turning) to evaluate and path length for the
+   * curvature that will bring the car to its closest point of appraoch to the carrot.
    *
    * @return Map with the curvature values as keys and pairs of the free path length and clearance (in that order) for
-   * the respective curvature as values.
+   * the respective curvature as values. Free path length will be at most the length to traverse for the closest point
+   * of approach (i.e. there could be more free space along the curvature, but we're not evaluating it).
    */
   std::unordered_map<double, std::pair<double, double>> getFreePathLengthsAndClearances(
-          const std::vector<double> &curvatures_to_evaluate);
+          const std::unordered_map<double, double> &curvatures_to_evaluate_with_free_path_len_to_closest_point_of_approach);
 
   /**
    * Get the free path length and clearance (distance to the closest obstacle) for the given
@@ -527,7 +554,7 @@ class Navigation {
    *
    * @return Pair with the first entry as the free path length and second entry as the clearance.
    */
-  std::pair<double, double> getFreePathLengthAndClearance(const double &curvature);
+  std::pair<double, double> getFreePathLengthAndClearance(const double &curvature, const double &free_path_len_to_closest_point_of_approach);
 
   /**
    * Command the drive to traverse the given distance along this curvature. Should only issue one command (we may
@@ -554,20 +581,17 @@ class Navigation {
   std::vector<double> constructCurvaturesToEvaluate();
 
   /**
-   * Get the free path length along the arc defined by the given curvature, that if traversed, would bring the car
-   * closest to the goal.
+   * For each curvature, get the path length along the curvature that will get the car closest to the goal (path length
+   * to closest point of approach).
    *
-   * Assumes that the goal is on the x-axis. If we want to expand this to arbitrary goals, we'll need to use the cosine
-   * rule.
+   * @param carrot      Location to reach in the base_link frame.
+   * @param curvatures  Curvatures to get the path length to the closest point of approach for.
    *
-   * @param goal_in_bl_frame_x      X coordinate of the goal. Assumed to be positive.
-   * @param curvature               Curvature defining arc to traverse.
-   * @param obstacle_free_path_len  Path length along arc for which we will not hit any obstacles.
-   *
-   * @return Free path length along arc that will bring the car closest to the goal position without hitting obstacles.
+   * @return Map of the curvature to the path length that would bring the car to the closest point of approach to the
+   * goal.
    */
-  double getFreePathLengthToClosestPointOfApproach(double goal_in_bl_frame_x, double curvature,
-                                                   double obstacle_free_path_len);
+  std::unordered_map<double, double> getPathLengthForClosestPointOfApproach(
+            const Eigen::Vector2f &carrot, const std::vector<double> &curvatures);
 
   /**
    * Get a target for local planning.
@@ -582,6 +606,11 @@ class Navigation {
    * @param carrot Target to reach with local planning.
    */
   void runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot);
+
+  /**
+   * Display the global path.
+   */
+  void displayGlobalPath();
 
   /**
    * True if the car is roughly along the path between the two nodes, false if it is outside these nodes. Car can
@@ -606,8 +635,14 @@ class Navigation {
    * Update nav complete to indicate if we've reached our goal.
    */
   void ReachedGoal();
-};
 
+  /**
+   * Draw the carrot (in the base_link frame).
+   *
+   * @param carrot Carrot that car is trying to get to as an intermediate step toward the goal.
+   */
+  void drawCarrot(const Eigen::Vector2f &carrot);
+};
 }  // namespace navigation
 
 #endif  // NAVIGATION_H

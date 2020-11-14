@@ -141,9 +141,8 @@ int main(int argc, char** argv) {
 
   ros::Subscriber velocity_sub =
       n.subscribe(FLAGS_odom_topic, 1, &OdometryCallback);
-  // TODO: Fix to use correct type
-//  ros::Subscriber localization_sub =
-//      n.subscribe(FLAGS_loc_topic, 1, &LocalizationCallback);
+  ros::Subscriber localization_sub =
+      n.subscribe(FLAGS_loc_topic, 1, &LocalizationCallback);
   ros::Subscriber laser_sub =
       n.subscribe(FLAGS_laser_topic, 1, &LaserCallback);
   ros::Subscriber goto_sub =
