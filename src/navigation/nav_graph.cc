@@ -5,7 +5,7 @@
 #include <navigation/nav_graph.h>
 #include <navigation/simple_queue.h>
 #include <navigation/navigation.cc>
-
+#include <navigation/navigation.h>
 
 namespace nav_graph {
 
@@ -36,12 +36,10 @@ double ComputeCost(const NavGraphNode& current, const NavGraphNode& next){
 }
 
 //we also need to define the start and goal nodes (assuming both are global variables) ///Please create nav_goal_loc_ and nav_start_loc_ as a NavGraphNode
-//void GetPathtoGoal( const Eigen::Vector2f& nav_goal_loc_, const Eigen::Vector2f& nav_start_loc_){
-void GetPathtoGoal( const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_start_loc){
+void GetPathtoGoal( const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_start_loc, const NavGraphNode& nodes_){
     std::unordered_map<NavGraphNode, NavGraphNode> came_from;
     std::unordered_map<NavGraphNode, double> cost_so_far;
     SimpleQueue<NavGraphNode,double > frontier;
-    //start reviewing the code from this part 
     frontier.Push(nav_start_loc , 0.0);
     
     came_from[nav_start_loc] = nav_start_loc;
@@ -49,18 +47,22 @@ void GetPathtoGoal( const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_st
     
     while (!frontier.Empty()){
         NavGraphNode current = frontier.Pop();
-        
-        void Navigation::ReachedGoal();
     
-        if (nav_complete_ == true){
+        if (current == nav_goal_loc){
             break;
         }
-        
-        for (NavGraphNode next :  ) {                       //enter the neighbors
-            double new_cost = cost_so_far[current] + /
-   */
-    }
-    }
-  
-
+        std::vector<NavGraphNode> neighbors = getNeighbors(current); 
+        for (NavGraphNode next : neighbors) {                      
+            double new_cost = cost_so_far[current] + ComputeCost(current , next);
+        if (cost_so_far.find(next) == cost_so_far.end() || new_cost < cost_so_far[next]){
+	    cost_so_far[next] = new_cost;
+            Eigen::Vector2f next_pos = next.getNodePos();
+            Eigen::Vector2f goal_pos = nav_goal_loc.getNodePos(); 
+            double priority = new_cost + Heurestic(next_pos, goal_pos);
+            frontier.Push(next , priority);
+            came_from[next] = current;
+            }
+            }
+}    
+}
 } // end nav_graph
