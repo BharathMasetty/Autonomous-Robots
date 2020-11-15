@@ -198,6 +198,36 @@ private:
      */
     std::unordered_map<NavGraphNode, std::vector<uint32_t>> neighbors_;
 };
+
+/**
+ * Compute the heuristic to use in A*.
+ *
+ * @param node_pos      Current node position.
+ * @param nav_goal_loc  Goal position.
+ *
+ * @return Heuristic estimating cost to goal.
+ */
+double computeHeuristic(const Eigen::Vector2f& node_pos,const Eigen::Vector2f& nav_goal_loc);
+
+/**
+ * Compute the cost between two nodes.
+ *
+ * @param current   Current node.
+ * @param next      Next node.
+ *
+ * @return Cost to go from current node to next node.
+ */
+double ComputeCost(const NavGraphNode& current, const NavGraphNode& next);
+
+/**
+ * Get a path from the start location to the goal location using the fixed nav graph (will need to add temporary nodes).
+ *
+ * @param nav_goal_loc      Goal location.
+ * @param nav_start_loc     Start location.
+ * @param nav_graph         Navigation graph with fixed resolution to plan across.
+ */
+std::vector<NavGraphNode> GetPathToGoal(const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_start_loc,
+                                        const NavGraph &nav_graph);
 } // end nav_graph
 
 
