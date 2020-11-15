@@ -294,6 +294,12 @@ class Navigation {
   Eigen::Vector2f nav_goal_loc_;
   // Navigation goal angle.
   float nav_goal_angle_;
+  
+    // Navigation Graph
+  nav_graph::NavGraph navigation_graph_;
+
+  // Whether navigation graph is ready or not.
+  bool is_nav_graph_ready_ = false;
 
   /**
    * File containing the map.
@@ -635,6 +641,12 @@ class Navigation {
    * Update nav complete to indicate if we've reached our goal.
    */
   void ReachedGoal();
+  /*
+   * creates navigation graph
+   */
+  void createNavGraph();
+
+};
 
   /**
    * Draw the carrot (in the base_link frame).

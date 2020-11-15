@@ -11,6 +11,8 @@
 #include <boost/functional/hash.hpp>
 #include <ros/ros.h>
 #include <unordered_map>
+#include "vector_map/vector_map.h"
+#include <amrl_msgs/VisualizationMsg.h>
 
 //using namespace Navigation;
 
@@ -19,7 +21,7 @@ namespace nav_graph {
 /**
  * Resolution of the navigation graph (provides how far apart the nearest two nodes are).
  */
-static const double kGridResolution = 0.25; // TODO tune
+static const double kGridResolution = 1.0; // TODO tune
 
 /**
  * Angular resolution of the navigation graph. With 90 degrees, there are 4 possible angles that a node could need
@@ -159,8 +161,22 @@ namespace nav_graph {
  */
 class NavGraph {
 public:
-    // TODO fill in
-
+    
+    /*
+     * Creates the navigation graph without initial and final node
+     */
+    void createNavigationGraph(const vector_map::VectorMap& map_);
+    
+    /*
+     * To visualize the nodes
+     */
+    void visualizeNavigationGraph(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg);
+    
+    /*
+     * To add initial and final node. 
+     */
+    void createUnalignedNode(const Eigen::Vector2f& loc, const float& angle, const uint32_t& ID);
+    
     /**
      * Get the neighbors of a given node.
      *
@@ -197,6 +213,11 @@ private:
      * the nodes_ list.
      */
     std::unordered_map<NavGraphNode, std::vector<uint32_t>> neighbors_;
+ 	
+     /*
+     * safety window for nodes, equal to max dimension of the car
+     */
+    const float kCarSafetyDistance = 0.535;  //TODO: Verify this
 };
 
 /**

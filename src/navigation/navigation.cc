@@ -91,7 +91,7 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
   recent_executed_commands.resize(kNumActLatencySteps);
 
   map_.Load(map_file_);
-
+  createNavGraph();
   InitRosHeader("base_link", &drive_msg_.header);
 
   // Fake global plan for testing in sim
@@ -106,6 +106,7 @@ void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
     nav_goal_loc_ = loc;
     nav_goal_angle_ = angle;
     nav_complete_ = false;
+    navigation_graph_.createUnalignedNode(loc, angle, 1);
 }
 
 void Navigation::UpdateLocation(const Vector2f& loc, float angle) {
@@ -123,6 +124,14 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
                                    double time) {
   cloud_ = cloud;
   scan_time_ = time; 
+}
+
+void Navigation::createNavGraph(){
+  navigation_graph_.createNavigationGraph(map_);
+  is_nav_graph_ready_ = true;
+  ROS_INFO("Navigation graph created!");
+  navigation_graph_.visualizeNavigationGraph(0x34b4eb, local_viz_msg_);
+  ROS_INFO("Navigation graph visualized!");
 }
 
 void Navigation::addCarDimensionsAndSafetyMarginAtPosToVisMessage(
@@ -679,7 +688,6 @@ void Navigation::displayGlobalPath() {
 
 void Navigation::Run() {
   visualization::ClearVisualizationMsg(local_viz_msg_);
-  visualization::ClearVisualizationMsg(global_viz_msg_);
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
 
   // Create Helper functions here
@@ -709,7 +717,6 @@ void Navigation::Run() {
   std::pair<Eigen::Vector2f, float> carrot = getCarrot();
   drawCarrot(carrot.first);
   runObstacleAvoidance(carrot);
-
   viz_pub_.publish(global_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
