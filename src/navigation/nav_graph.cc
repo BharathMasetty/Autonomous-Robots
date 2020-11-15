@@ -48,30 +48,43 @@ namespace nav_graph {
     //we also need to define the start and goal nodes (assuming both are global variables) ///Please create nav_goal_loc_ and nav_start_loc_ as a NavGraphNode
     std::vector<NavGraphNode> GetPathToGoal( const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_start_loc,
                                              const NavGraph &nav_graph) {
-//        std::unordered_map<NavGraphNode, NavGraphNode> came_from;
-//        std::unordered_map<NavGraphNode, double> cost_so_far;
-//        SimpleQueue<NavGraphNode, double> frontier;
-//
-//        //start reviewing the code from this part
-//        frontier.Push(nav_start_loc, computeHeuristic(nav_start_loc.getNodePos(), nav_goal_loc.getNodePos()));
-//
-//        cost_so_far[nav_start_loc] = 0;
-//
-//        while (!frontier.Empty()){
-//            NavGraphNode current = frontier.Pop();
-//            // TODO
-//        }
+        std::unordered_map<NavGraphNode, NavGraphNode> came_from;
+        std::unordered_map<NavGraphNode, double> cost_so_far;
+        SimpleQueue<NavGraphNode,double > frontier;
+        frontier.Push(nav_start_loc , 0.0);
 
-        return {}; // TODO
+        came_from[nav_start_loc] = nav_start_loc;
+        cost_so_far[nav_start_loc] = 0;
+
+        while (!frontier.Empty()){
+            NavGraphNode current = frontier.Pop();
+
+            if (current == nav_goal_loc){
+                break;
+            }
+            std::vector<NavGraphNode> neighbors = getNeighbors(current);
+            for (NavGraphNode next : neighbors) {
+                double new_cost = cost_so_far[current] + ComputeCost(current , next);
+                if (cost_so_far.find(next) == cost_so_far.end() || new_cost < cost_so_far[next]){
+                    cost_so_far[next] = new_cost;
+                    Eigen::Vector2f next_pos = next.getNodePos();
+                    Eigen::Vector2f goal_pos = nav_goal_loc.getNodePos();
+                    double priority = new_cost + Heurestic(next_pos, goal_pos);
+                    frontier.Push(next , priority);
+                    came_from[next] = current;
+                }
+            }
+
+        return {};
     }
 
 void NavGraph::visualizeNavigationGraphPoints(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg){
 
    // Visualize Nodes
    for (const NavGraphNode& node : nodes_){
-   	visualization::DrawPoint(node.getNodePos(), node_color, viz_msg); 
-	
-	}	
+   	visualization::DrawPoint(node.getNodePos(), node_color, viz_msg);
+
+	}
 }
 
 void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg){
@@ -90,17 +103,17 @@ void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_ms
 		double startAngle = 0.0;
 		double endAngle = 0.0;
 		if (nodeAngle == otherAngle){
-			visualization::DrawLine(nodeLoc, otherLoc, node_color, viz_msg);	
+			visualization::DrawLine(nodeLoc, otherLoc, node_color, viz_msg);
 		}
-		else{    
-			 	
+		else{
+
 			 if (nodeAngle == 0.0 && otherAngle == kAngularOptionsFromNavGraph){
 				startAngle = -kAngularOptionsFromNavGraph;
-				endAngle = 0.0;	
-			}		
+				endAngle = 0.0;
+			}
 			 else if (nodeAngle == kAngularOptionsFromNavGraph && otherAngle == 2*kAngularOptionsFromNavGraph){
 				startAngle = 0.0;
-				endAngle = kAngularOptionsFromNavGraph;	
+				endAngle = kAngularOptionsFromNavGraph;
 			 }
 			 else if (nodeAngle == 2*kAngularOptionsFromNavGraph && otherAngle == 3*kAngularOptionsFromNavGraph){
                                 startAngle =  kAngularOptionsFromNavGraph;
@@ -116,14 +129,14 @@ void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_ms
 			if (otherAngle > M_PI){
 				theta2 = otherAngle -  M_PI;
 			}
-   			if (nodeAngle > M_PI){ 
+   			if (nodeAngle > M_PI){
 				theta1 = nodeAngle - M_PI;
 			}
 			float centerX = otherLoc.x()*cos(theta2) + nodeLoc.x()*cos(theta1);
 			float centerY = otherLoc.y()*sin(theta2) + nodeLoc.y()*sin(theta1);
    			float radius = kGridResolution;
         		Vector2f center(centerX, centerY);
-			visualization::DrawArc(center, radius, startAngle, endAngle, node_color, viz_msg);		
+			visualization::DrawArc(center, radius, startAngle, endAngle, node_color, viz_msg);
 		}
 		}
    	}
@@ -174,7 +187,7 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
    std::cout << initial2DGrid.size() << std::endl;
 
    /* Removing the intersection points with map lines considering car dimensions
-    * For every line segment in the amp, we identify the points that are between the ends of lines 
+    * For every line segment in the amp, we identify the points that are between the ends of lines
     * and delete it from the initial2DGrid if it is too close to the line segment or intersects it.
     */
    for (const line2f& l :map_.lines){
@@ -199,7 +212,7 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
 				deleteNode = true;
 			}
 		}
-		
+
 		if (deleteNode) {
 			initial2DGrid.erase(std::remove(initial2DGrid.begin(), initial2DGrid.end(), P), initial2DGrid.end());
 		}
@@ -208,7 +221,7 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
    }
    std::cout << initial2DGrid.size() << std::endl;
    std::cout << "Intersections deleted" << std::endl;
-   
+
    // Filling up Nodes vector
    for (const Vector2f& point : initial2DGrid){
 
@@ -217,8 +230,8 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
 		nodes_.emplace_back(point, possible_node_angle, true, 0);
              	possible_node_angle += kAngularOptionsFromNavGraph;
         }
-   } 
-	
+   }
+
   std::cout << nodes_.size() << std::endl;
 
   // Create the neighbours by considering intersection with the map lines
@@ -246,36 +259,36 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
 	NavGraphNode tempNode3(Vector2f(nodeX+cosOffset+sinOffset, nodeY+sinOffset-cosOffset), tempNodeOrientation2, true, 0);
 
 	for (uint32_t j=0; j<nodes_.size(); j++){
-		NavGraphNode otherNode = nodes_[j];	
+		NavGraphNode otherNode = nodes_[j];
 		//Vector2f otherNodeLoc = otherNode.getNodePos();
 		//float otherX = otherNodeLoc.x();
 		//float otherY = otherNodeLoc.y();
 		//double otherNodeAngle = nodes_[j].getNodeOrientation();
 		bool intersection = true;
-		if(otherNode == tempNode1 || otherNode == tempNode2 || otherNode == tempNode3){	
+		if(otherNode == tempNode1 || otherNode == tempNode2 || otherNode == tempNode3){
 			//std::cout << "Other Node " << otherX << " " << otherY << " " << otherNodeAngle << std::endl;
 			intersection = checkIntersectionWithMap(node, otherNode, map_);
 			}
 	  	if (!intersection) {
 			neighbors.push_back(j);
-		 	} 	
+		 	}
 		}
 	if (!neighbors.empty()){
-		neighbors_[nodes_[i]] = neighbors; 
+		neighbors_[nodes_[i]] = neighbors;
 		}
 	}
    std::cout << "final purning done!" << std::endl;
    std::cout << kAngularOptionsFromNavGraph << std::endl;
 	}
 
-void NavGraph::createUnalignedNode(const Eigen::Vector2f& loc, 
+void NavGraph::createUnalignedNode(const Eigen::Vector2f& loc,
 				      const float& angle,
 				      const uint32_t& ID){
   nodes_.emplace_back(loc, angle, false, ID);
 }
 
 bool NavGraph::checkIntersectionWithMap(const NavGraphNode& node1, const NavGraphNode& node2, const vector_map::VectorMap& map_){
-  
+
   bool intersects = false;
   Vector2f nodeLoc = node1.getNodePos();
   double nodeAngle = node1.getNodeOrientation();
@@ -291,10 +304,10 @@ bool NavGraph::checkIntersectionWithMap(const NavGraphNode& node1, const NavGrap
   	intersects = checkLineIntersectionWithMap(straightEdge, map_);
   }
   else {
- 	intersects = checkCurveIntersectionWithMap(nodeX, nodeY, nodeAngle, otherNodeX, otherNodeY, otherNodeAngle, map_); 
+ 	intersects = checkCurveIntersectionWithMap(nodeX, nodeY, nodeAngle, otherNodeX, otherNodeY, otherNodeAngle, map_);
   }
 
-  return intersects;  
+  return intersects;
 }
 
 
@@ -308,11 +321,11 @@ bool NavGraph::checkLineIntersectionWithMap(const line2f& line, const vector_map
    return intersection;
 }
 
-bool NavGraph::checkCurveIntersectionWithMap(const float& x1, 
-					     const float& y1, 
+bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
+					     const float& y1,
 					     double& theta1,
-					     const float& x2, 
-					     const float& y2, 
+					     const float& x2,
+					     const float& y2,
 					     double& theta2,
 					     const vector_map::VectorMap& map_){
 
@@ -328,21 +341,21 @@ bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
 
    Vector2f MidPoint1(centerX+change*dir*sin(subAngle1), centerY-change*dir*cos(subAngle1));
    Vector2f MidPoint2(centerX+change*dir*sin(subAngle2), centerY-change*dir*cos(subAngle2));
-   
+
    //std::cout << "M1 " << MidPoint1.x() << " " << MidPoint1.y() << std::endl;
    //std::cout << "M2 " << MidPoint2.x() << " " << MidPoint2.y() << std::endl;
-   
+
    line2f Edge1(x1, y1, MidPoint1.x(), MidPoint1.y());
    line2f Edge2(MidPoint1.x(), MidPoint1.y(), MidPoint2.x(), MidPoint2.y());
    line2f Edge3(x2, y2, MidPoint2.x(), MidPoint2.y());
-   
+
    bool intersection1 = checkLineIntersectionWithMap(Edge1, map_);
    bool intersection2 = checkLineIntersectionWithMap(Edge2, map_);
    bool intersection3 = checkLineIntersectionWithMap(Edge3, map_);
-   
+
    bool intersection  = (intersection1 || intersection2 || intersection3);
-   
+
    return intersection;
 }
-
+}
 } // end nav_graph
