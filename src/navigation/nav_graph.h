@@ -57,6 +57,12 @@ public:
         }
     }
 
+    /**
+     * Default constructor. Should never be used explicitly (only by other data structures that require a default
+     * constructor).
+     */
+    NavGraphNode() = default;
+
     bool operator==(const NavGraphNode &other) const {
         if (grid_aligned_) {
             if (other.grid_aligned_) {
@@ -189,24 +195,23 @@ public:
      *
      * @return Vector of neighbor nodes.
      */
-    std::vector<NavGraphNode> getNeighbors(const NavGraphNode &node) {
+    std::vector<NavGraphNode> getNeighbors(const NavGraphNode &node) const {
         if (neighbors_.find(node) == neighbors_.end()) {
             ROS_INFO("Unknown query node");
             return {};
         }
-        std::vector<uint32_t> neighbor_nums = neighbors_[node];
+        std::vector<uint32_t> neighbor_nums = neighbors_.at(node);
         size_t nodes_num = nodes_.size();
         std::vector<NavGraphNode> neighbor_nodes;
         for (const auto neighbor_num : neighbor_nums) {
             if (neighbor_num < nodes_num) {
-                neighbor_nodes.emplace_back(nodes_[neighbor_num]);
+                neighbor_nodes.emplace_back(nodes_.at(neighbor_num));
             } else {
                 ROS_ERROR("Neighbor did not exist in nodes list");
             }
         }
+        return neighbor_nodes;
     }
-
-
 
 private:
 
