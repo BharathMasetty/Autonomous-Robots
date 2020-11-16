@@ -646,8 +646,6 @@ class Navigation {
    */
   void createNavGraph();
 
-};
-
   /**
    * Draw the carrot (in the base_link frame).
    *

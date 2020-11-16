@@ -130,8 +130,10 @@ void Navigation::createNavGraph(){
   navigation_graph_.createNavigationGraph(map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
-  navigation_graph_.visualizeNavigationGraph(0x34b4eb, local_viz_msg_);
-  ROS_INFO("Navigation graph visualized!");
+  navigation_graph_.visualizeNavigationGraphPoints(0x34b4eb, global_viz_msg_);
+  ROS_INFO("Graph Points visualized!");
+  navigation_graph_.visualizeNavigationGraphEdges(0x34b4eb, global_viz_msg_);
+  ROS_INFO("Graph Edges visualized!");
 }
 
 void Navigation::addCarDimensionsAndSafetyMarginAtPosToVisMessage(

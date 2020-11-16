@@ -21,14 +21,14 @@ namespace nav_graph {
 /**
  * Resolution of the navigation graph (provides how far apart the nearest two nodes are).
  */
-static const double kGridResolution = 1.0; // TODO tune
+static const double kGridResolution = 0.5; // TODO tune
 
 /**
  * Angular resolution of the navigation graph. With 90 degrees, there are 4 possible angles that a node could need
  * to be in. (If we allow backward motion, we could probably consider 0 and 180 to be the same and 90/-90 to be the
  * same, since the car can reach the node still, but we'll handle this in edge connections instead.
  */
-static const double kAngularOptionsFromNavGraph = math_util::DegToRad(90);
+static const double kAngularOptionsFromNavGraph = math_util::DegToRad(90.0);
 
 class NavGraphNode {
 public:
@@ -170,8 +170,13 @@ public:
     /*
      * To visualize the nodes
      */
-    void visualizeNavigationGraph(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg);
-    
+    void visualizeNavigationGraphPoints(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg);
+
+    /*
+     * To visualize the nodes
+     */
+    void visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg);
+
     /*
      * To add initial and final node. 
      */
@@ -218,6 +223,27 @@ private:
      * safety window for nodes, equal to max dimension of the car
      */
     const float kCarSafetyDistance = 0.535;  //TODO: Verify this
+
+    /*
+     * Given 2 potential neighebouring nodes, check the intersection with the map
+     */
+    bool checkIntersectionWithMap(const NavGraphNode& node1, const NavGraphNode& node2, const vector_map::VectorMap& map_);
+
+    /*
+     * Line intersection with map
+     */
+    bool checkLineIntersectionWithMap(const geometry::line2f& line, const vector_map::VectorMap& map_);
+
+    /*
+     * Check curved line intersection with map
+     */
+    bool checkCurveIntersectionWithMap(const float& startX, 
+                                             const float& startY, 
+                                             double& startAngle,
+                                             const float& endX, 
+                                             const float& endY, 
+                                             double& endAngle, 
+					     const vector_map::VectorMap& map_);
 };
 
 /**
