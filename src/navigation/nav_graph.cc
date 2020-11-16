@@ -50,30 +50,31 @@ namespace nav_graph {
                                              const NavGraph &nav_graph) {
         std::unordered_map<NavGraphNode, NavGraphNode> came_from;
         std::unordered_map<NavGraphNode, double> cost_so_far;
-        SimpleQueue<NavGraphNode,double > frontier;
-        frontier.Push(nav_start_loc , 0.0);
+        SimpleQueue<NavGraphNode, double> frontier;
 
-        came_from[nav_start_loc] = nav_start_loc;
+        frontier.Push(nav_start_loc,  computeHeuristic(nav_start_loc.getNodePos(), nav_goal_loc.getNodePos()));
+
         cost_so_far[nav_start_loc] = 0;
 
-        while (!frontier.Empty()){
+        while (!frontier.Empty()) {
             NavGraphNode current = frontier.Pop();
 
-            if (current == nav_goal_loc){
+            if (current == nav_goal_loc) {
                 break;
             }
-            std::vector<NavGraphNode> neighbors = getNeighbors(current);
+            std::vector<NavGraphNode> neighbors = nav_graph.getNeighbors(current);
             for (NavGraphNode next : neighbors) {
-                double new_cost = cost_so_far[current] + ComputeCost(current , next);
-                if (cost_so_far.find(next) == cost_so_far.end() || new_cost < cost_so_far[next]){
+                double new_cost = cost_so_far[current] + ComputeCost(current, next);
+                if ((cost_so_far.find(next) == cost_so_far.end()) || (new_cost < cost_so_far[next])) {
                     cost_so_far[next] = new_cost;
                     Eigen::Vector2f next_pos = next.getNodePos();
                     Eigen::Vector2f goal_pos = nav_goal_loc.getNodePos();
-                    double priority = new_cost + Heurestic(next_pos, goal_pos);
-                    frontier.Push(next , priority);
+                    double priority = new_cost + computeHeuristic(next_pos, goal_pos);
+                    frontier.Push(next, priority);
                     came_from[next] = current;
                 }
             }
+        }
 
         return {};
     }
