@@ -108,13 +108,6 @@ class Navigation {
   const double kActuationLatency = 0.15;
 
   /**
-   * Maximum curvature (assumed to be the same on both sides of the car, so c_min = -1 *c_max).
-   *
-   * TODO Investigate this value.
-   */
-  const double kMaxCurvature = 1.0;
-
-  /**
    * Number of curvatures to evaluate. These will be evenly spaced between c_min and c_max
    * (see kMaxCurvature).
    *
@@ -234,9 +227,14 @@ class Navigation {
   const uint32_t kGlobalPlanColor = 0x435614;
 
   /**
-   * Size of the cross for the carrot and global plan points.
+   * Size of the cross for the global plan points.
    */
-  const float kCarrotAndGlobalPlanCrossSize = 0.4;
+  const float kGlobalPlanCrossSize = 0.1;
+
+  /**
+   * Size of the cross for the carrot.
+   */
+  const float kCarrotCrossSize = 0.3;
 
   /**
    * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
@@ -295,8 +293,26 @@ class Navigation {
   // Navigation goal angle.
   float nav_goal_angle_;
   
-    // Navigation Graph
-  nav_graph::NavGraph navigation_graph_;
+  /**
+   * Navigation graph that has only the grid_aligned nodes.
+   */
+  nav_graph::NavGraph permanent_navigation_graph_;
+
+  /**
+   * Navigation graph that has the start/goal nodes added to it. This should be replaced by a copy from the permanent
+   * nav graph when a new goal is set.
+   */
+  nav_graph::NavGraph temp_node_nav_graph_;
+
+  /**
+   * Node for the goal.
+   */
+  nav_graph::NavGraphNode goal_node_;
+
+  /**
+   * Node for the start.
+   */
+  nav_graph::NavGraphNode start_node_;
 
   // Whether navigation graph is ready or not.
   bool is_nav_graph_ready_ = false;
@@ -308,6 +324,11 @@ class Navigation {
 
   // Map of the environment.
   vector_map::VectorMap map_;
+
+  /**
+   * True if we've just set a goal and need to replan. False, if we should continue working toward the last set goal.
+   */
+  bool new_goal_;
 
   /**
    * Weight for the clearance in the scoring function. Clearance is good so this should be a positive number.
@@ -400,43 +421,6 @@ class Navigation {
   void addCarDimensionsAndSafetyMarginAtPosToVisMessage(const std::pair<Eigen::Vector2f, double> &car_origin_loc,
       const uint32_t &car_color_loc, const uint32_t &safety_color, amrl_msgs::VisualizationMsg &viz_msg);
 
-  /**
-   * Get the pose of the src frame object in the target frame given the pose of the source frame in the target frame.
-   *
-   * Ex. get the pose of an object in the map frame given the pose in the base link frame and the pose of the base
-   * link in the robot's frame.
-   *
-   * @param src_frame_point                     Location of the point in the source frame (base link frame in the example).
-   * @param src_frame_angle                     Angle of the point in the source frame (base link frame in the example).
-   * @param src_frame_pos_rel_target_frame      Position of the origin of the source frame in the target frame
-   *                                            (position of the base link frame in the map frame in the example).
-   * @param src_frame_angle_rel_target_frame    Angle of the source frame relative to the target frame (angle from map
-   *                                            x axis to base link x axis in the example).
-   *
-   * @return Pose of point in the target frame (map frame in this example).
-   */
-  std::pair<Eigen::Vector2f, float> transformPoint(const Eigen::Vector2f &src_frame_point, const float &src_frame_angle,
-                                                   const Eigen::Vector2f &src_frame_pos_rel_target_frame,
-                                                   const float &src_frame_angle_rel_target_frame);
-
-  /**
-   * Get the pose of the src frame object in the target frame given the pose of the target frame in the source frame.
-   *
-   * Ex. get the pose of an object relative to base link given the pose of the object in the map frame and the pose of
-   * the robot in the map frame
-   *
-   * @param src_frame_point                     Location of the point in the source frame (map frame in the example).
-   * @param src_frame_angle                     Angle of the point in the source frame (map frame in the example).
-   * @param target_frame_pos_rel_src_frame      Position of the origin of the target frame in the src frame
-   *                                            (position of the base link frame in the map frame in the example).
-   * @param target_frame_angle_rel_src_frame    Angle of the target frame relative to the src frame (angle from map
-   *                                            x axis to base link x axis in the example).
-   * @return Pose of point in the target frame (base link frame in this example).
-   */
-  std::pair<Eigen::Vector2f, float> inverseTransformPoint(const Eigen::Vector2f &src_frame_point,
-                                                          const float &src_frame_angle,
-                                                          const Eigen::Vector2f &target_frame_pos_rel_src_frame,
-                                                          const float &target_frame_angle_rel_src_frame);
 
   /**
    * Add components to the visualization message for seeing the car size and car+safety margin size.
