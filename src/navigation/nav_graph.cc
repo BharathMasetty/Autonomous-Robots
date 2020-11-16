@@ -1,4 +1,3 @@
-//
 // Created by amanda on 11/12/20.
 //
 
@@ -60,7 +59,17 @@ namespace nav_graph {
             NavGraphNode current = frontier.Pop();
 
             if (current == nav_goal_loc) {
-                break;
+                std::vector<NavGraphNode> path;
+                NavGraphNode node_to_find_parent_for = current;
+                path.emplace_back(node_to_find_parent_for);
+                while(came_from.find(node_to_find_parent_for) != came_from.end()){
+                    node_to_find_parent_for = came_from.at(node_to_find_parent_for);
+                    path.emplace_back(node_to_find_parent_for);
+}
+            std::reverse(path.begin(), path.end());
+            return path;      
+            ROS_INFO_STREAM("Optimal path found!");
+
             }
             std::vector<NavGraphNode> neighbors = nav_graph.getNeighbors(current);
             for (NavGraphNode next : neighbors) {
@@ -357,6 +366,5 @@ bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
    bool intersection  = (intersection1 || intersection2 || intersection3);
 
    return intersection;
-}
 }
 } // end nav_graph
