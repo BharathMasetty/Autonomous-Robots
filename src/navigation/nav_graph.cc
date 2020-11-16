@@ -6,6 +6,8 @@
 #include <navigation/simple_queue.h>
 #include "visualization/visualization.h"
 #include <navigation/simple_queue.h>
+#include "shared/ros/ros_helpers.h"
+#include "ros/ros.h"
 
 using amrl_msgs::VisualizationMsg;
 using geometry::line2f;
@@ -63,21 +65,70 @@ namespace nav_graph {
         return {}; // TODO
     }
 
-void NavGraph::visualizeNavigationGraph(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg){
+void NavGraph::visualizeNavigationGraphPoints(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg){
 
    // Visualize Nodes
    for (const NavGraphNode& node : nodes_){
    	visualization::DrawPoint(node.getNodePos(), node_color, viz_msg); 
-	/*
-	for (const auto& lattice: neighbors_){
-		Vector2f node = lattice.first.getNodePos();
-		std::vector<uint32_t> neighbors = lattice.second;
-		for(const uint32_t i : neighbors){
-			visualization::DrawLine(node, nodes_[i].getNodePos(), node_color, viz_msg);
-		}
-	}*/	
-   }
+	
+	}	
 }
+
+void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_msgs::VisualizationMsg &viz_msg){
+
+   // Visualize Edges
+   for (const auto& lattice: neighbors_){
+   	NavGraphNode node = lattice.first;
+	Vector2f nodeLoc = node.getNodePos();
+	double nodeAngle = node.getNodeOrientation();
+        std::vector<uint32_t> neighbors = lattice.second;
+        for(const uint32_t i : neighbors){
+		NavGraphNode otherNode = nodes_[i];
+	       	Vector2f otherLoc = otherNode.getNodePos();
+		double otherAngle = otherNode.getNodeOrientation();
+		visualization::DrawLine(nodeLoc, otherLoc, node_color, viz_msg);
+		double startAngle = 0.0;
+		double endAngle = 0.0;
+		if (nodeAngle == otherAngle){
+			visualization::DrawLine(nodeLoc, otherLoc, node_color, viz_msg);	
+		}
+		else{    
+			 	
+			 if (nodeAngle == 0.0 && otherAngle == kAngularOptionsFromNavGraph){
+				startAngle = -kAngularOptionsFromNavGraph;
+				endAngle = 0.0;	
+			}		
+			 else if (nodeAngle == kAngularOptionsFromNavGraph && otherAngle == 2*kAngularOptionsFromNavGraph){
+				startAngle = 0.0;
+				endAngle = kAngularOptionsFromNavGraph;	
+			 }
+			 else if (nodeAngle == 2*kAngularOptionsFromNavGraph && otherAngle == 3*kAngularOptionsFromNavGraph){
+                                startAngle =  kAngularOptionsFromNavGraph;
+                                endAngle = 2*kAngularOptionsFromNavGraph;
+                         }
+			 else if (nodeAngle == 3*kAngularOptionsFromNavGraph && otherAngle == 0.0){
+                                startAngle =  2*kAngularOptionsFromNavGraph;
+                                endAngle = 3*kAngularOptionsFromNavGraph;
+                         }
+
+			double theta1 = nodeAngle;
+			double theta2 = otherAngle;
+			if (otherAngle > M_PI){
+				theta2 = otherAngle -  M_PI;
+			}
+   			if (nodeAngle > M_PI){ 
+				theta1 = nodeAngle - M_PI;
+			}
+			float centerX = otherLoc.x()*cos(theta2) + nodeLoc.x()*cos(theta1);
+			float centerY = otherLoc.y()*sin(theta2) + nodeLoc.y()*sin(theta1);
+   			float radius = kGridResolution;
+        		Vector2f center(centerX, centerY);
+			visualization::DrawArc(center, radius, startAngle, endAngle, node_color, viz_msg);		
+		}
+		}
+   	}
+}
+
 
 void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
 
@@ -122,7 +173,10 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
    std::cout << "Initial Grid defined" << std::endl;
    std::cout << initial2DGrid.size() << std::endl;
 
-   // Removing the intersection points with map lines considering car dimensions
+   /* Removing the intersection points with map lines considering car dimensions
+    * For every line segment in the amp, we identify the points that are between the ends of lines 
+    * and delete it from the initial2DGrid if it is too close to the line segment or intersects it.
+    */
    for (const line2f& l :map_.lines){
         Vector2f A(l.p0.x(), l.p0.y());
         Vector2f B(l.p1.x(), l.p1.y());
@@ -130,29 +184,24 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
 	bool isVertical = false;
 	if (A.y() == B.y()) isHorizontal = true;
 	else if (A.x() == B.x()) isVertical = true;
-	//std::cout << "New Line" << isHorizontal << " " <<  isVertical << std::endl;
-	//std::cout << A.x() << " " << B.x() << " " << A.y() << " " << B.y() << " " << isHorizontal << " " << isVertical << " " << std::endl;
-	for (uint i=0; i< initial2DGrid.size(); i++){
+	for (uint32_t i=0; i< initial2DGrid.size(); i++){
 		bool deleteNode = false;
 		Vector2f P = initial2DGrid[i];
         	Vector2f AP = P - A;
 		Vector2f BP = P - B;
-
-		//std::cout << P.x() << " " << P.y() << " " << AP.x()*BP.x() <<std::endl;
-		if (isHorizontal && AP.x()*BP.x()<0){
-			//std::cout << "Here" << " " << AP.y() << std::endl;
+		if (isHorizontal && AP.x()*BP.x()<=0){
 			if (std::abs(AP.y()) <= kCarSafetyDistance) {
 				deleteNode = true;
-				//std::cout << "DeleteFlag"<< std::endl;
 			}
 		}
-		if (isVertical && AP.y()*BP.y()<0){
-			if (std::abs(AP.x()) <= kCarSafetyDistance) deleteNode = true;
+		if (isVertical && AP.y()*BP.y()<=0){
+			if (std::abs(AP.x()) <= kCarSafetyDistance) {
+				deleteNode = true;
+			}
 		}
-
+		
 		if (deleteNode) {
-			initial2DGrid.erase(initial2DGrid.begin() + i);
-			//std::cout<<"Node Deleted"<< std::endl;
+			initial2DGrid.erase(std::remove(initial2DGrid.begin(), initial2DGrid.end(), P), initial2DGrid.end());
 		}
 	}
 
@@ -162,11 +211,11 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
    
    // Filling up Nodes vector
    for (const Vector2f& point : initial2DGrid){
-  
-	float possible_node_angle = math_util::DegToRad(-180);
-        while (possible_node_angle < math_util::DegToRad(90)){
-        	nodes_.emplace_back(point, possible_node_angle, true, 0);
-                possible_node_angle += kAngularOptionsFromNavGraph;
+
+	float possible_node_angle = math_util::DegToRad(0);
+        while (possible_node_angle < math_util::DegToRad(360)){
+		nodes_.emplace_back(point, possible_node_angle, true, 0);
+             	possible_node_angle += kAngularOptionsFromNavGraph;
         }
    } 
 	
@@ -175,80 +224,125 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
   // Create the neighbours by considering intersection with the map lines
   for (uint32_t i=0; i<nodes_.size(); i++){
  	std::vector<uint32_t> neighbors;
-	Vector2f nodeLoc = nodes_[i].getNodePos();
+	NavGraphNode node = nodes_[i];
+	Vector2f nodeLoc = node.getNodePos();
 	float nodeX = nodeLoc.x();
 	float nodeY = nodeLoc.y();
-	float nodeAngle = nodes_[i].getNodeOrientation();
-	float xOffset = kGridResolution*cos(M_PI_2*nodeAngle);
-	float yOffset = kGridResolution*sin(M_PI_2*nodeAngle);
-	float angOffsetx = kGridResolution*cos(M_PI_2*(nodeAngle+kAngularOptionsFromNavGraph));
-	float angOffsety = kGridResolution*sin(M_PI_2*(nodeAngle+kAngularOptionsFromNavGraph));
-	for (uint32_t j=0; j<nodes_.size(); j++){
-		Vector2f otherNodeLoc = nodes_[j].getNodePos();
-		float otherX = otherNodeLoc.x();
-		float otherY = otherNodeLoc.y();
-		float otherNodeAngle = nodes_[j].getNodeOrientation();
-		bool intersection = false;
-		//float distance = (nodeLoc - otherNodeLoc).norm();
-		//float angleDiff = std::abs(nodeAngle - otherNodeAngle);
-		
-		if ((otherX == nodeX+xOffset && otherY == nodeY+yOffset && nodeAngle == otherNodeAngle) || 
-	            (otherX == nodeX+xOffset+angOffsetx && otherY == nodeY+yOffset+angOffsety && otherNodeAngle == nodeAngle+kAngularOptionsFromNavGraph) || 
-		    (otherX == nodeX+xOffset-angOffsetx && otherY == nodeY+yOffset-angOffsety && otherNodeAngle == nodeAngle-kAngularOptionsFromNavGraph)) {
-			
-		    // check for intersection with map line
-			if (otherNodeAngle == nodeAngle){
-				line2f straightEdge(nodeX, nodeY, otherX, otherY);
-				for (const line2f& mapline :map_.lines){
-					intersection = mapline.Intersects(straightEdge);
-					if (intersection) break;
-				}
-			}
-			else if (nodeAngle >= otherNodeAngle){
-				line2f Edge1(nodeX, nodeY, nodeX+kGridResolution*cos(math_util::DegToRad(30)), nodeY-kGridResolution*sin(math_util::DegToRad(30)));
-				line2f Edge2(nodeX+kGridResolution*cos(math_util::DegToRad(30)), nodeY-kGridResolution*sin(math_util::DegToRad(30)),
-						nodeX+kGridResolution*cos(math_util::DegToRad(60)), nodeY-kGridResolution*sin(math_util::DegToRad(60)));
-				line2f Edge3(nodeX+kGridResolution*cos(math_util::DegToRad(60)), nodeY-kGridResolution*sin(math_util::DegToRad(60)), otherX, otherY);
-		 		std::vector<line2f> splineEdges {Edge1, Edge2, Edge3};	
-				for(const line2f& edge : splineEdges){
-					for (const line2f& mapline :map_.lines){
-                                        	intersection = mapline.Intersects(edge);
-                                		if (intersection) break;
-                                	}
-                                	if (intersection) break;
-				}
-			}
-			else {
-				line2f Edge1(nodeX, nodeY, nodeX+kGridResolution*cos(math_util::DegToRad(30)), nodeY+kGridResolution*sin(math_util::DegToRad(30)));
-                                line2f Edge2(nodeX+kGridResolution*cos(math_util::DegToRad(30)), nodeY+kGridResolution*sin(math_util::DegToRad(30)),
-                                                nodeX+kGridResolution*cos(math_util::DegToRad(60)), nodeY+kGridResolution*sin(math_util::DegToRad(60)));
-                                line2f Edge3(nodeX+kGridResolution*cos(math_util::DegToRad(60)), nodeY+kGridResolution*sin(math_util::DegToRad(60)), otherX, otherY);
-		 		std::vector<line2f> splineEdges {Edge1, Edge2, Edge3};	
-				for(const line2f& edge : splineEdges){
-                                        for (const line2f& mapline :map_.lines){
-                                        	intersection = mapline.Intersects(edge);
-                                        	if (intersection) break;
-                                        }
-                                        if (intersection) break;
-                                }	
-			}
-		//std::cout<< "Intersection " << intersection << std::endl;
-	  	if (!intersection) neighbors.push_back(j);
-		}
+	double nodeAngle = node.getNodeOrientation();
+	float cosOffset = kGridResolution*cos(nodeAngle);
+	float sinOffset = kGridResolution*sin(nodeAngle);
+	//std::cout << "Node " << nodeX << " " << nodeY << " " << nodeAngle << std::endl;
+	double tempNodeOrientation1 = nodeAngle+kAngularOptionsFromNavGraph;
+	if (tempNodeOrientation1 >= 2*M_PI){
+		tempNodeOrientation1 -= 2*M_PI;
 	}
+	double tempNodeOrientation2 = nodeAngle+3*kAngularOptionsFromNavGraph;
+	if (tempNodeOrientation2 >= 2*M_PI){
+                tempNodeOrientation2 -= 2*M_PI;
+        }
+
+	NavGraphNode tempNode1(Vector2f(nodeX+cosOffset, nodeY+sinOffset), nodeAngle, true, 0);
+	NavGraphNode tempNode2(Vector2f(nodeX+cosOffset-sinOffset, nodeY+sinOffset+cosOffset), tempNodeOrientation1, true, 0);
+	NavGraphNode tempNode3(Vector2f(nodeX+cosOffset+sinOffset, nodeY+sinOffset-cosOffset), tempNodeOrientation2, true, 0);
+
+	for (uint32_t j=0; j<nodes_.size(); j++){
+		NavGraphNode otherNode = nodes_[j];	
+		//Vector2f otherNodeLoc = otherNode.getNodePos();
+		//float otherX = otherNodeLoc.x();
+		//float otherY = otherNodeLoc.y();
+		//double otherNodeAngle = nodes_[j].getNodeOrientation();
+		bool intersection = true;
+		if(otherNode == tempNode1 || otherNode == tempNode2 || otherNode == tempNode3){	
+			//std::cout << "Other Node " << otherX << " " << otherY << " " << otherNodeAngle << std::endl;
+			intersection = checkIntersectionWithMap(node, otherNode, map_);
+			}
+	  	if (!intersection) {
+			neighbors.push_back(j);
+		 	} 	
+		}
 	if (!neighbors.empty()){
-		std::pair<NavGraphNode, std::vector<uint32_t>> newMapping (nodes_[i], neighbors);
-		neighbors_.insert(newMapping);
-		//std::cout<< neighbors.size() << std::endl;
+		neighbors_[nodes_[i]] = neighbors; 
 		}
 	}
    std::cout << "final purning done!" << std::endl;
-}
+   std::cout << kAngularOptionsFromNavGraph << std::endl;
+	}
 
 void NavGraph::createUnalignedNode(const Eigen::Vector2f& loc, 
 				      const float& angle,
 				      const uint32_t& ID){
   nodes_.emplace_back(loc, angle, false, ID);
+}
+
+bool NavGraph::checkIntersectionWithMap(const NavGraphNode& node1, const NavGraphNode& node2, const vector_map::VectorMap& map_){
+  
+  bool intersects = false;
+  Vector2f nodeLoc = node1.getNodePos();
+  double nodeAngle = node1.getNodeOrientation();
+  float nodeX = nodeLoc.x();
+  float nodeY = nodeLoc.y();
+  Vector2f otherNodeLoc = node2.getNodePos();
+  double otherNodeAngle = node2.getNodeOrientation();
+  float otherNodeX = otherNodeLoc.x();
+  float otherNodeY = otherNodeLoc.y();
+  // No change in incoming and outgoing angle
+  if (nodeAngle == otherNodeAngle){
+  	line2f straightEdge(nodeX, nodeY, otherNodeX, otherNodeY);
+  	intersects = checkLineIntersectionWithMap(straightEdge, map_);
+  }
+  else {
+ 	intersects = checkCurveIntersectionWithMap(nodeX, nodeY, nodeAngle, otherNodeX, otherNodeY, otherNodeAngle, map_); 
+  }
+
+  return intersects;  
+}
+
+
+bool NavGraph::checkLineIntersectionWithMap(const line2f& line, const vector_map::VectorMap& map_){
+   bool intersection = false;
+   for (const line2f& mapline : map_.lines){
+                intersection = mapline.Intersects(line);
+                if (intersection) break;
+
+   }
+   return intersection;
+}
+
+bool NavGraph::checkCurveIntersectionWithMap(const float& x1, 
+					     const float& y1, 
+					     double& theta1,
+					     const float& x2, 
+					     const float& y2, 
+					     double& theta2,
+					     const vector_map::VectorMap& map_){
+
+   double subAngle1 = math_util::DegToRad(30.0);
+   double subAngle2 = math_util::DegToRad(60.0);
+   double angleDiff = theta2-theta1;
+   float dir = cos(theta1) + sin(theta1);
+   if (theta1 >= M_PI) theta1 -= M_PI;
+   if (theta2 >= M_PI) theta2 -= M_PI;
+   float centerX = x2*cos(theta2)+x1*cos(theta1);
+   float centerY = y2*sin(theta2)+y1*sin(theta1);
+   float change = kGridResolution*sin(angleDiff);
+
+   Vector2f MidPoint1(centerX+change*dir*sin(subAngle1), centerY-change*dir*cos(subAngle1));
+   Vector2f MidPoint2(centerX+change*dir*sin(subAngle2), centerY-change*dir*cos(subAngle2));
+   
+   //std::cout << "M1 " << MidPoint1.x() << " " << MidPoint1.y() << std::endl;
+   //std::cout << "M2 " << MidPoint2.x() << " " << MidPoint2.y() << std::endl;
+   
+   line2f Edge1(x1, y1, MidPoint1.x(), MidPoint1.y());
+   line2f Edge2(MidPoint1.x(), MidPoint1.y(), MidPoint2.x(), MidPoint2.y());
+   line2f Edge3(x2, y2, MidPoint2.x(), MidPoint2.y());
+   
+   bool intersection1 = checkLineIntersectionWithMap(Edge1, map_);
+   bool intersection2 = checkLineIntersectionWithMap(Edge2, map_);
+   bool intersection3 = checkLineIntersectionWithMap(Edge3, map_);
+   
+   bool intersection  = (intersection1 || intersection2 || intersection3);
+   
+   return intersection;
 }
 
 } // end nav_graph
