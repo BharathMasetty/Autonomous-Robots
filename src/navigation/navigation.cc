@@ -66,7 +66,8 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
     nav_complete_(true),
     nav_goal_loc_(0, 0),
     nav_goal_angle_(0),
-    map_file_(map_file) {
+    map_file_(map_file),
+    new_goal_(false) {
   drive_pub_ = n->advertise<AckermannCurvatureDriveMsg>(
       "ackermann_curvature_drive", 1);
   viz_pub_ = n->advertise<VisualizationMsg>("visualization", 1);
@@ -103,10 +104,11 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
 }
 
 void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
+    ROS_INFO_STREAM("Setting new goal " << loc.x() << ", " << loc.y());
     nav_goal_loc_ = loc;
     nav_goal_angle_ = angle;
     nav_complete_ = false;
-    navigation_graph_.createUnalignedNode(loc, angle, 1);
+    new_goal_ = true;
 }
 
 void Navigation::UpdateLocation(const Vector2f& loc, float angle) {
@@ -127,13 +129,14 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
 }
 
 void Navigation::createNavGraph(){
-  navigation_graph_.createNavigationGraph(map_);
+  permanent_navigation_graph_.createNavigationGraph(map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
-  navigation_graph_.visualizeNavigationGraphPoints(0x34b4eb, global_viz_msg_);
+  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
   ROS_INFO("Graph Points visualized!");
-  navigation_graph_.visualizeNavigationGraphEdges(0x34b4eb, global_viz_msg_);
+  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
   ROS_INFO("Graph Edges visualized!");
+  viz_pub_.publish(global_viz_msg_);
 }
 
 void Navigation::addCarDimensionsAndSafetyMarginAtPosToVisMessage(
@@ -225,7 +228,7 @@ std::vector<double> Navigation::constructCurvaturesToEvaluate() {
     for (int i = 1; i <= half_num_to_eval; i++) {
         int pos_curve_index = half_num_to_eval + i;
         int neg_curve_index = half_num_to_eval - i;
-        double abs_curv = (((double) i ) / half_num_to_eval) * kMaxCurvature;
+        double abs_curv = (((double) i ) / half_num_to_eval) * nav_graph::kMaxCurvature;
         eval_curves[pos_curve_index] = abs_curv;
         eval_curves[neg_curve_index] = -1 * abs_curv;
     }
@@ -272,7 +275,7 @@ double Navigation::getOptimalCurvatureForCarrot(const Eigen::Vector2f &carrot_lo
     double curvature = (2 * carrot_location.y()) / carrot_location.squaredNorm();
 
     // Make sure curvature is within bounds
-    curvature = std::max(-1 * kMaxCurvature, std::min(kMaxCurvature, curvature));
+    curvature = std::max(-1 * nav_graph::kMaxCurvature, std::min(nav_graph::kMaxCurvature, curvature));
     return curvature;
 }
 
@@ -287,7 +290,7 @@ std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
 
     double best_curvature;
     if (reasonably_open_curvatures.empty()) {
-        ROS_INFO("Close to carrot or no reasonably open paths");
+//        ROS_INFO("Close to carrot or no reasonably open paths");
 
         // If there are no reasonably open curvatures, use the fallback weighing function to weigh between the free
         // path length and other considerations (proximity to goal, clearance)
@@ -296,7 +299,7 @@ std::pair<double, double> Navigation::chooseCurvatureForNextTimestep(
 
         // Find the optimal curvature and then pick the one that is resonably open that is closest to that optimal
         // curvature.
-        best_curvature = kMaxCurvature;
+        best_curvature = nav_graph::kMaxCurvature;
         double diff_from_best_curvature = std::numeric_limits<double>::infinity();
         double optimal_curvature_for_carrot = getOptimalCurvatureForCarrot(carrot.first);
 
@@ -350,7 +353,8 @@ double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(
         std::unordered_map<double, std::pair<double, double>> &curvature_and_obstacle_limitations_map,
         const std::pair<Eigen::Vector2f, float> &carrot) {
 
-    std::pair<double, double> best_curvature_and_score = std::make_pair(kMaxCurvature, -1 * std::numeric_limits<double>::infinity());
+    std::pair<double, double> best_curvature_and_score = std::make_pair(
+            nav_graph::kMaxCurvature, -1 * std::numeric_limits<double>::infinity());
 
     double best_curvature = getOptimalCurvatureForCarrot(carrot.first);
 
@@ -543,36 +547,6 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
     recent_executed_commands[0] = drive_msg;
 }
 
-std::pair<Vector2f, float> Navigation::transformPoint(const Vector2f &src_frame_point, const float &src_frame_angle,
-                                                      const Vector2f &src_frame_pos_rel_target_frame,
-                                                      const float &src_frame_angle_rel_target_frame) {
-
-    // Rotate the point first
-    Eigen::Rotation2Df rotation_mat(src_frame_angle_rel_target_frame);
-    Vector2f rotated_still_src_transl = rotation_mat * src_frame_point;
-
-    // Then translate
-    Vector2f rotated_and_translated = src_frame_pos_rel_target_frame + rotated_still_src_transl;
-    float target_angle = AngleMod(src_frame_angle_rel_target_frame + src_frame_angle);
-
-    return std::make_pair(rotated_and_translated, target_angle);
-
-}
-
-std::pair<Vector2f, float> Navigation::inverseTransformPoint(const Vector2f &src_frame_point,
-                                                             const float &src_frame_angle,
-                                                             const Vector2f &target_frame_pos_rel_src_frame,
-                                                             const float &target_frame_angle_rel_src_frame) {
-    // Translate the point
-    Vector2f translated = src_frame_point - target_frame_pos_rel_src_frame;
-
-    // Then rotate
-    Eigen::Rotation2Df rotation_mat(-target_frame_angle_rel_src_frame);
-    Vector2f rotated_and_translated = rotation_mat * translated;
-
-    float target_angle = AngleMod(src_frame_angle - target_frame_angle_rel_src_frame);
-    return std::make_pair(rotated_and_translated, target_angle);
-}
 
 std::pair<Eigen::Vector2f, float> Navigation::getCarrot() {
     // This function assumes that the first node in the global_plan_to_execute_ is the one that we are coming from and
@@ -583,14 +557,17 @@ std::pair<Eigen::Vector2f, float> Navigation::getCarrot() {
     nav_graph::NavGraphNode last_reachable_node = global_plan_to_execute_[1];
     for (size_t i = 2; i < global_plan_to_execute_.size(); i++) {
         if (!map_.Intersects(global_plan_to_execute_[i].getNodePos(), robot_loc_)) {
-            last_reachable_node = global_plan_to_execute_[i];
+            Vector2f node_pos_rel_robot = nav_graph::inverseTransformPoint(global_plan_to_execute_[i].getNodePos(), 0, robot_loc_, robot_angle_).first;
+            if (node_pos_rel_robot.x() >= 0) {
+                last_reachable_node = global_plan_to_execute_[i];
+            }
         } else {
             break;
         }
     }
 
     // Convert the carrot into the base link frame
-    return inverseTransformPoint(last_reachable_node.getNodePos(), last_reachable_node.getNodeOrientation(),
+    return nav_graph::inverseTransformPoint(last_reachable_node.getNodePos(), last_reachable_node.getNodeOrientation(),
                                  robot_loc_, robot_angle_);
 }
 
@@ -599,7 +576,7 @@ bool Navigation::isCarInBetweenNodes(const nav_graph::NavGraphNode &node_1, cons
     // Check if the car is in the rectangle centered around the line connecting node 1 and node 2
     geometry::line2f line_between_nodes(node_1.getNodePos(), node_2.getNodePos());
     double line_angle = atan2(line_between_nodes.Dir().y(), line_between_nodes.Dir().x());
-    Vector2f car_in_line_frame = inverseTransformPoint(robot_loc_, robot_angle_, node_1.getNodePos(), line_angle).first;
+    Vector2f car_in_line_frame = nav_graph::inverseTransformPoint(robot_loc_, robot_angle_, node_1.getNodePos(), line_angle).first;
 
     if ((car_in_line_frame.x() < 0) || (car_in_line_frame.x() >= line_between_nodes.Length())) {
         return false;
@@ -625,10 +602,15 @@ bool Navigation::isCarInBetweenNodes(const nav_graph::NavGraphNode &node_1, cons
 }
 
 void Navigation::drawCarrot(const Eigen::Vector2f &carrot) {
-    visualization::DrawCross(carrot, kCarrotAndGlobalPlanCrossSize, kCarrotColor, local_viz_msg_);
+    visualization::DrawCross(carrot, kCarrotCrossSize, kCarrotColor, local_viz_msg_);
 }
 
 bool Navigation::planStillValid() {
+
+    if (global_plan_to_execute_.empty()) {
+        ROS_ERROR_STREAM("Could not find path to goal. Need to set new goal (and investigate why we couldn't find path");
+        return false;
+    }
 
     bool is_between_nodes = false;
     std::size_t immediately_preceding_index;
@@ -680,7 +662,7 @@ void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &c
 
 void Navigation::displayGlobalPath() {
     for (size_t i = 1; i < global_plan_to_execute_.size(); i++) {
-        visualization::DrawCross(global_plan_to_execute_[i].getNodePos(), kCarrotAndGlobalPlanCrossSize,
+        visualization::DrawCross(global_plan_to_execute_[i].getNodePos(), kGlobalPlanCrossSize,
                                  kGlobalPlanColor, global_viz_msg_);
         // TODO we should probably draw the arcs instead of straight line connections.
         visualization::DrawLine(global_plan_to_execute_[i - 1].getNodePos(), global_plan_to_execute_[i].getNodePos(),
@@ -690,6 +672,8 @@ void Navigation::displayGlobalPath() {
 
 void Navigation::Run() {
   visualization::ClearVisualizationMsg(local_viz_msg_);
+  visualization::ClearVisualizationMsg(global_viz_msg_);
+
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
 
   // Create Helper functions here
@@ -707,17 +691,43 @@ void Navigation::Run() {
   ReachedGoal();
   if (nav_complete_) {
       ROS_INFO_STREAM("No further to go. Will wait for new goal.");
+      global_plan_to_execute_.clear();
       return;
   }
 
+  if (global_plan_to_execute_.empty() || new_goal_) {
+      new_goal_ = false;
+      temp_node_nav_graph_ = permanent_navigation_graph_.createCopy();
+      ROS_INFO_STREAM("Adding start and goal nodes");
+      std::pair<nav_graph::NavGraphNode, nav_graph::NavGraphNode> start_goal_nodes = temp_node_nav_graph_.addStartAndGoal(
+              std::make_pair(robot_loc_, robot_angle_), nav_goal_loc_);
+      goal_node_ = start_goal_nodes.second;
+      start_node_ = start_goal_nodes.first;
+      ROS_INFO_STREAM("Planning path ");
+      global_plan_to_execute_ = nav_graph::GetPathToGoal(goal_node_, start_goal_nodes.first, temp_node_nav_graph_);
+      ROS_INFO_STREAM("Done planning path");
+      // Plan
+  }
+//  ROS_INFO_STREAM("Has plan of length " << global_plan_to_execute_.size());
+  temp_node_nav_graph_.visualizeConnectionsFromNode(start_node_, global_viz_msg_);
+  temp_node_nav_graph_.visualizeGoalEdges(goal_node_.getNodePos(), global_viz_msg_);
+
+//  temp_node_nav_graph_.visualizeNavigationGraphPoints( global_viz_msg_);
   displayGlobalPath();
   if (!planStillValid()) {
-      // TODO replan
+      ROS_INFO_STREAM("Replanning!");
+      nav_graph::NavGraphNode updated_start = temp_node_nav_graph_.updateStart(std::make_pair(robot_loc_, robot_angle_));
+      start_node_ = updated_start;
+      global_plan_to_execute_ = nav_graph::GetPathToGoal(goal_node_, updated_start, temp_node_nav_graph_);
   }
 
-  std::pair<Eigen::Vector2f, float> carrot = getCarrot();
-  drawCarrot(carrot.first);
-  runObstacleAvoidance(carrot);
+  if (global_plan_to_execute_.empty()) {
+      ROS_ERROR_STREAM("Could not find path to goal. Need to set new goal (and investigate why we couldn't find path");
+  } else {
+      std::pair<Eigen::Vector2f, float> carrot = getCarrot();
+      drawCarrot(carrot.first);
+      runObstacleAvoidance(carrot);
+  }
   viz_pub_.publish(global_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
