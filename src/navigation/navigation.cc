@@ -123,8 +123,10 @@ void Navigation::createNavGraph(){
   navigation_graph_.createNavigationGraph(map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
-  navigation_graph_.visualizeNavigationGraph(0x34b4eb, local_viz_msg_);
-  ROS_INFO("Navigation graph visualized!");
+  navigation_graph_.visualizeNavigationGraphPoints(0x34b4eb, global_viz_msg_);
+  ROS_INFO("Graph Points visualized!");
+  navigation_graph_.visualizeNavigationGraphEdges(0x34b4eb, global_viz_msg_);
+  ROS_INFO("Graph Edges visualized!");
 }
 
 void Navigation::addCarDimensionsAndSafetyMarginAtPosToVisMessage(
@@ -543,7 +545,6 @@ void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &c
 
 void Navigation::Run() {
   visualization::ClearVisualizationMsg(local_viz_msg_);
-  navigation_graph_.visualizeNavigationGraph(0x34b4eb, local_viz_msg_);
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
 
   // Create Helper functions here
@@ -557,13 +558,14 @@ void Navigation::Run() {
 
   // TODO check if reached goal (Kunal)
 
-  if (!planStillValid()) {
+  //if (!planStillValid()) {
       // TODO replan
-  }
+  //}
 
-  std::pair<Eigen::Vector2f, float> carrot = getCarrot();
-  runObstacleAvoidance(carrot);
+  //std::pair<Eigen::Vector2f, float> carrot = getCarrot();
+  //runObstacleAvoidance(carrot);
   viz_pub_.publish(local_viz_msg_);
+  viz_pub_.publish(global_viz_msg_);
 }
 
 void Navigation::ReachedGoal(){
