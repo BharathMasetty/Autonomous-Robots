@@ -17,8 +17,8 @@ using std::vector;
 namespace nav_graph {
 
     std::pair<std::pair<int32_t, int32_t>, int8_t> NavGraphNode::convertToKeyForm() const {
-        int32_t key_form_x = round(node_pos_.x() / kGridResolution);
-        int32_t key_form_y = round(node_pos_.y() / kGridResolution);
+        int32_t key_form_x = round(node_pos_.x() / kStaggeredGridResolution);
+        int32_t key_form_y = round(node_pos_.y() / kStaggeredGridResolution);
         int8_t key_form_angle = round(node_orientation_ / kAngularOptionsFromNavGraph);
 
         std::pair<int32_t, int32_t> pos_pair = std::make_pair(key_form_x, key_form_y);
@@ -143,99 +143,137 @@ void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_ms
    	}
 }
 
+std::pair<Vector2f, Vector2f> NavGraph::getMapCorners(const vector_map::VectorMap &map) {
+    float x_min = std::numeric_limits<float>::infinity();
+    float y_min = std::numeric_limits<float>::infinity();
+    float x_max = -std::numeric_limits<float>::infinity();
+    float y_max = -std::numeric_limits<float>::infinity();
+
+    for (const line2f &l : map.lines) {
+        std::vector<float> xs{l.p0.x(), l.p1.x()};
+        std::vector<float> ys{l.p0.y(), l.p1.y()};
+        for (const float &x : xs) {
+            if (x < x_min) x_min = x;
+            if (x > x_max) x_max = x;
+        }
+        for (const float &y : ys) {
+            if (y < y_min) y_min = y;
+            if (y > y_max) y_max = y;
+        }
+    }
+
+    std::cout << "Map extremens obtained" << std::endl;
+    std::cout << x_min << "  " << x_max << "  " << y_min << " " << y_max << std::endl;
+    return std::make_pair(Vector2f(x_min, y_min), Vector2f(x_max, y_max));
+}
+
+std::vector<Vector2f> NavGraph::createInitialNodePositions(const std::pair<Vector2f, Vector2f> &map_corners) {
+    float x_min = map_corners.first.x();
+    float y_min = map_corners.first.y();
+    float x_max = map_corners.second.x();
+    float y_max = map_corners.second.y();
+
+    std::vector<Vector2f> initial2DGrid;
+
+    for (int x_stagger_index = 0; x_stagger_index < kStaggerCount; x_stagger_index++) {
+        float x_stagger = kGridResolution * ((float) x_stagger_index) / kStaggerCount;
+        ROS_INFO_STREAM("X stagger " << x_stagger);
+        for (int y_stagger_index = 0; y_stagger_index < kStaggerCount; y_stagger_index++) {
+            float x_frontier = x_min + x_stagger;
+            float y_stagger = kGridResolution * ((float) y_stagger_index) / kStaggerCount;
+            ROS_INFO_STREAM("Y stagger " << y_stagger);
+            while (x_frontier <= x_max) {
+                float x_new_node = x_frontier;
+                float y_frontier = y_min + y_stagger;
+                while (y_frontier <= y_max) {
+                    float y_new_node = y_frontier;
+                    initial2DGrid.emplace_back(x_new_node, y_new_node);
+                    Vector2f node(x_new_node, y_new_node);
+                    y_frontier += kGridResolution;
+                }
+                x_frontier += kGridResolution;
+            }
+        }
+    }
+    return initial2DGrid;
+}
+
+std::vector<Vector2f> NavGraph::pruneNodesNearObstacles(const std::vector<Vector2f> &unpruned_nodes,
+                                              const vector_map::VectorMap &map) {
+
+    /* Removing the intersection points with map lines considering car dimensions
+     * For every line segment in the amp, we identify the points that are between the ends of lines
+     * and delete it from the initial2DGrid if it is too close to the line segment or intersects it.
+     */
+
+    std::vector<Vector2f> nodes_after_pruning = {};
+    for (const Vector2f &node : unpruned_nodes) {
+        bool deleteNode = false;
+        Vector2f P = node;
+        for (const line2f& l :map.lines) {
+            Vector2f A(l.p0.x(), l.p0.y());
+            Vector2f B(l.p1.x(), l.p1.y());
+            bool isHorizontal = false;
+            bool isVertical = false;
+            if (A.y() == B.y()) {
+                isHorizontal = true;
+            } else if (A.x() == B.x()) {
+                isVertical = true;
+            }
+            Vector2f AP = P - A;
+            Vector2f BP = P - B;
+            if (isHorizontal && AP.x() * BP.x() <= 0) {
+                if (std::abs(AP.y()) <= kCarSafetyDistance) {
+                    deleteNode = true;
+                }
+            }
+            if (isVertical && AP.y() * BP.y() <= 0) {
+                if (std::abs(AP.x()) <= kCarSafetyDistance) {
+                    deleteNode = true;
+                }
+            }
+        }
+
+        if (!deleteNode) {
+            nodes_after_pruning.emplace_back(node);
+        }
+    }
+    return nodes_after_pruning;
+}
+
+
 void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
 
    std::cout << "Nav Graph compute Started" << std::endl;
-   //Get extreme x,y's of the map
-   float x_min = std::numeric_limits<float>::infinity();
-   float y_min = std::numeric_limits<float>::infinity();
-   float x_max = -std::numeric_limits<float>::infinity();
-   float y_max = -std::numeric_limits<float>::infinity();
 
-   for(const line2f& l : map_.lines){
-        std::vector<float> xs{l.p0.x(), l.p1.x()};
-        std::vector<float> ys{l.p0.y(), l.p1.y()};
-        for(const float& x : xs){
-                if (x < x_min) x_min = x;
-                if (x > x_max) x_max = x;
-        }
-        for(const float& y : ys){
-                if (y < y_min) y_min = y;
-                if (y > y_max) y_max = y;
-        }
-   }
-   std::cout << "Map extremens obtained" << std::endl;
-   std::cout << x_min << "  " << x_max << "  " << y_min << " " << y_max << std::endl;
-
-   // To create an initial grid centered around initial pos in map range
-   std::vector<Vector2f> initial2DGrid;
-   float x_frontier = x_min;
-   float y_frontier = y_min;
-
-   while (x_frontier <= x_max) {
-       float x_new_node = x_frontier;
-       y_frontier =  y_min;
-       while (y_frontier <= y_max) {
-           float y_new_node = y_frontier;
-           initial2DGrid.emplace_back(x_new_node, y_new_node);
-           Vector2f node(x_new_node, y_new_node);
-           y_frontier += kGridResolution;
-       }
-       x_frontier += kGridResolution;
-   }
+   std::vector<Vector2f> initial2DGrid = createInitialNodePositions(getMapCorners(map_));
    std::cout << "Initial Grid defined" << std::endl;
    std::cout << initial2DGrid.size() << std::endl;
 
-   /* Removing the intersection points with map lines considering car dimensions
-    * For every line segment in the amp, we identify the points that are between the ends of lines
-    * and delete it from the initial2DGrid if it is too close to the line segment or intersects it.
-    */
-   for (const line2f& l :map_.lines) {
-       Vector2f A(l.p0.x(), l.p0.y());
-       Vector2f B(l.p1.x(), l.p1.y());
-       bool isHorizontal = false;
-       bool isVertical = false;
-       if (A.y() == B.y()) {
-           isHorizontal = true;
-       } else if (A.x() == B.x()) {
-           isVertical = true;
-       }
-       for (uint32_t i=0; i< initial2DGrid.size(); i++) {
-           bool deleteNode = false;
-           Vector2f P = initial2DGrid[i];
-           Vector2f AP = P - A;
-           Vector2f BP = P - B;
-           if (isHorizontal && AP.x()*BP.x()<=0) {
-               if (std::abs(AP.y()) <= kCarSafetyDistance) {
-                   deleteNode = true;
-               }
-           }
-           if (isVertical && AP.y()*BP.y()<=0) {
-               if (std::abs(AP.x()) <= kCarSafetyDistance) {
-                   deleteNode = true;
-               }
-           }
+   std::vector<Vector2f> nodes_after_pruning = pruneNodesNearObstacles(initial2DGrid, map_);
 
-           if (deleteNode) {
-               initial2DGrid.erase(std::remove(initial2DGrid.begin(), initial2DGrid.end(), P), initial2DGrid.end());
-           }
-       }
-   }
-   std::cout << initial2DGrid.size() << std::endl;
+   std::cout << nodes_after_pruning.size() << std::endl;
    std::cout << "Intersections deleted" << std::endl;
 
+   std::unordered_map<NavGraphNode, size_t> node_index_map;
+   node_index_map.reserve(nodes_after_pruning.size() * kNumAngularOptions);
+   nodes_.reserve(nodes_after_pruning.size() * kNumAngularOptions);
+
    // Filling up Nodes vector
-   for (const Vector2f& point : initial2DGrid) {
-       float possible_node_angle = math_util::DegToRad(0);
-       while (possible_node_angle < math_util::DegToRad(360)) {
-           nodes_.emplace_back(point, possible_node_angle, true, 0);
-           possible_node_angle += kAngularOptionsFromNavGraph;
+   size_t node_index = 0;
+   for (const Vector2f& point : nodes_after_pruning) {
+       for (int rot_num = 0; rot_num < kNumAngularOptions; rot_num++) {
+           NavGraphNode new_node(point, rot_num * kAngularOptionsFromNavGraph, true, 0);
+           node_index_map[new_node] = node_index;
+           node_index++;
+           nodes_.emplace_back(new_node);
        }
    }
 
    std::cout << nodes_.size() << std::endl;
 
    // Create the neighbours by considering intersection with the map lines
+   size_t edges_count = 0;
    for (uint32_t i=0; i<nodes_.size(); i++) {
        std::vector<uint32_t> neighbors;
        NavGraphNode node = nodes_[i];
@@ -247,39 +285,31 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
        float sinOffset = kGridResolution * sin(nodeAngle);
        //std::cout << "Node " << nodeX << " " << nodeY << " " << nodeAngle << std::endl;
        double tempNodeOrientation1 = nodeAngle + kAngularOptionsFromNavGraph;
-       if (tempNodeOrientation1 >= 2 * M_PI) {
-           tempNodeOrientation1 -= 2 * M_PI;
-       }
        double tempNodeOrientation2 = nodeAngle + 3 * kAngularOptionsFromNavGraph;
-       if (tempNodeOrientation2 >= 2 * M_PI) {
-           tempNodeOrientation2 -= 2 * M_PI;
-       }
 
-       NavGraphNode tempNode1(Vector2f(nodeX + cosOffset, nodeY + sinOffset), nodeAngle, true, 0);
+       NavGraphNode tempNode1(Vector2f(nodeX + (cosOffset / ((float) kStaggerCount)), nodeY + (sinOffset / ((float) kStaggerCount))), nodeAngle, true, 0);
        NavGraphNode tempNode2(Vector2f(nodeX + cosOffset - sinOffset, nodeY + sinOffset + cosOffset),
                               tempNodeOrientation1, true, 0);
        NavGraphNode tempNode3(Vector2f(nodeX + cosOffset + sinOffset, nodeY + sinOffset - cosOffset),
                               tempNodeOrientation2, true, 0);
 
-       for (uint32_t j = 0; j < nodes_.size(); j++) {
-           NavGraphNode otherNode = nodes_[j];
-           //Vector2f otherNodeLoc = otherNode.getNodePos();
-           //float otherX = otherNodeLoc.x();
-           //float otherY = otherNodeLoc.y();
-           //double otherNodeAngle = nodes_[j].getNodeOrientation();
-           bool intersection = true;
-           if (otherNode == tempNode1 || otherNode == tempNode2 || otherNode == tempNode3) {
-               //std::cout << "Other Node " << otherX << " " << otherY << " " << otherNodeAngle << std::endl;
-               intersection = checkIntersectionWithMap(node, otherNode, map_);
-           }
-           if (!intersection) {
-               neighbors.push_back(j);
+       std::vector<NavGraphNode> possible_neighbors = {tempNode1, tempNode2, tempNode3};
+
+       for (const NavGraphNode &possible_neighbor : possible_neighbors) {
+           if (node_index_map.find(possible_neighbor) != node_index_map.end()) {
+               size_t neighbor_num = node_index_map.at(possible_neighbor);
+               if (!checkIntersectionWithMap(node, possible_neighbor, map_)) {
+                   neighbors.push_back(neighbor_num);
+                   edges_count++;
+               }
            }
        }
+
        if (!neighbors.empty()) {
            neighbors_[nodes_[i]] = neighbors;
        }
    }
+   ROS_INFO_STREAM("Num edges " << edges_count);
    std::cout << "final purning done!" << std::endl;
    std::cout << kAngularOptionsFromNavGraph << std::endl;
 }
@@ -323,23 +353,25 @@ bool NavGraph::checkLineIntersectionWithMap(const line2f& line, const vector_map
 
 bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
 					     const float& y1,
-					     double& theta1,
+					     const double& theta1,
 					     const float& x2,
 					     const float& y2,
-					     double& theta2,
+					     const double& theta2,
 					     const vector_map::VectorMap& map_){
     double subAngle1 = math_util::DegToRad(30.0);
     double subAngle2 = math_util::DegToRad(60.0);
     double angleDiff = theta2-theta1;
     float dir = cos(theta1) + sin(theta1);
-    if (theta1 >= M_PI) {
-        theta1 -= M_PI;
+    double tmp_theta_1 = theta1;
+    double tmp_theta_2 = theta2;
+    if (tmp_theta_1 >= M_PI) {
+        tmp_theta_1 -= M_PI;
     }
-    if (theta2 >= M_PI) {
-        theta2 -= M_PI;
+    if (tmp_theta_2 >= M_PI) {
+        tmp_theta_2 -= M_PI;
     }
-    float centerX = x2*cos(theta2)+x1*cos(theta1);
-    float centerY = y2*sin(theta2)+y1*sin(theta1);
+    float centerX = x2*cos(tmp_theta_2)+x1*cos(tmp_theta_1);
+    float centerY = y2*sin(tmp_theta_2)+y1*sin(tmp_theta_1);
     float change = kGridResolution*sin(angleDiff);
 
     Vector2f MidPoint1(centerX+change*dir*sin(subAngle1), centerY-change*dir*cos(subAngle1));

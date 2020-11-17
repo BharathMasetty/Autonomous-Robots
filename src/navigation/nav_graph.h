@@ -24,11 +24,40 @@ namespace nav_graph {
 static const double kGridResolution = 1.0; // TODO tune
 
 /**
+ * Number of increments in the grid resolution.
+ */
+static const int kStaggerCount = 2;
+
+/**
+ * Staggered (finer) resolution.
+ */
+static const double kStaggeredGridResolution = kGridResolution / kStaggerCount;
+
+/**
  * Angular resolution of the navigation graph. With 90 degrees, there are 4 possible angles that a node could need
  * to be in. (If we allow backward motion, we could probably consider 0 and 180 to be the same and 90/-90 to be the
  * same, since the car can reach the node still, but we'll handle this in edge connections instead.
  */
-static const double kAngularOptionsFromNavGraph = math_util::DegToRad(90.0);
+static const double kAngularOptionsFromNavGraph = M_PI_2;
+
+/**
+ * Number of angular options.
+ */
+static const int kNumAngularOptions = M_2PI / kAngularOptionsFromNavGraph;
+
+/**
+ * Convert the given angle to be properly in the nav graph node range. Assumes that this should be a multiple of
+ * kAngularOptionsFromNavGraph.
+ *
+ * @return Angle that is one of the options for the discretized node angles in the proper NavGraphNode range.
+ */
+static double convertAngleToNavGraphNodeRange(const double &angle) {
+    int orientation_index = (((int) round(angle / kAngularOptionsFromNavGraph)) % kNumAngularOptions);
+    if (orientation_index < 0) {
+        orientation_index += kNumAngularOptions;
+    }
+    return math_util::AngleMod(orientation_index * kAngularOptionsFromNavGraph);
+}
 
 class NavGraphNode {
 public:
@@ -53,6 +82,7 @@ public:
                  grid_aligned_(grid_aligned),
                  id_for_not_grid_aligned_(id_for_not_grid_aligned) {
         if (grid_aligned) {
+            node_orientation_ = convertAngleToNavGraphNodeRange(node_orientation_);
             id_for_not_grid_aligned_ = kGridAlignedIdentifierValue;
         }
     }
@@ -151,7 +181,7 @@ namespace std {
             boost::hash_combine(seed, key_form.first.second);
             boost::hash_combine(seed, key_form.second);
 
-            uint32_t non_grid_id;
+            uint32_t non_grid_id = 0;
             bool grid_aligned = node.isGridAligned(non_grid_id);
             boost::hash_combine(seed, grid_aligned);
             boost::hash_combine(seed, non_grid_id);
@@ -246,11 +276,16 @@ private:
      */
     bool checkCurveIntersectionWithMap(const float& startX, 
                                              const float& startY, 
-                                             double& startAngle,
+                                             const double& startAngle,
                                              const float& endX, 
                                              const float& endY, 
-                                             double& endAngle, 
+                                             const double& endAngle,
 					     const vector_map::VectorMap& map_);
+
+    std::pair<Eigen::Vector2f, Eigen::Vector2f> getMapCorners(const vector_map::VectorMap &map);
+    std::vector<Eigen::Vector2f> createInitialNodePositions(const std::pair<Eigen::Vector2f, Eigen::Vector2f> &map_corners);
+    std::vector<Eigen::Vector2f> pruneNodesNearObstacles(const std::vector<Eigen::Vector2f> &unpruned_nodes,
+                                                         const vector_map::VectorMap &map);
 };
 
 /**
