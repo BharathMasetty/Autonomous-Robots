@@ -21,7 +21,7 @@ namespace nav_graph {
 /**
  * Resolution of the navigation graph (provides how far apart the nearest two nodes are).
  */
-static const double kGridResolution = 0.5; // TODO tune
+static const double kGridResolution = 1.0; // TODO tune
 
 /**
  * Angular resolution of the navigation graph. With 90 degrees, there are 4 possible angles that a node could need
