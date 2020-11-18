@@ -357,10 +357,10 @@ bool NavGraph::checkLineIntersectionWithMap(const line2f& line, const vector_map
 
 bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
 					     const float& y1,
-					     const double& theta1,
+					     double& theta1,
 					     const float& x2,
 					     const float& y2,
-					     const double& theta2,
+					     double& theta2,
 					     const vector_map::VectorMap& map_){
    
     double temptheta1 = theta1;
@@ -370,7 +370,7 @@ bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
     if (temptheta2 >= M_PI) temptheta2 -= M_PI;
 	
     float centerX = x2*cos(temptheta2)+x1*cos(temptheta1);
-    float centerY = y2*sin(temptheta2)+y1*sin(temptheta1);	
+    float centerY = y2*sin(temptheta2)+y1*sin(temptheta1);
     
     double CenterAngle1 = atan2(y1-centerY, x1-centerX);
     double CenterAngle2 = atan2(y2-centerY, x2-centerX);    
