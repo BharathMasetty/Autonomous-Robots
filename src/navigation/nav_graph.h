@@ -280,10 +280,10 @@ private:
      */
     bool checkCurveIntersectionWithMap(const float& startX, 
                                              const float& startY, 
-                                             const double& startAngle,
+                                             double& startAngle,
                                              const float& endX, 
                                              const float& endY, 
-                                             const double& endAngle,
+                                             double& endAngle,
 					     const vector_map::VectorMap& map_);
 
     std::pair<Eigen::Vector2f, Eigen::Vector2f> getMapCorners(const vector_map::VectorMap &map);
