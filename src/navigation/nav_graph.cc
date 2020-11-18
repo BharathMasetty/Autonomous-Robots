@@ -128,15 +128,13 @@ void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_ms
 		double startAngle = std::min(CenterAngle1, CenterAngle1+angleChange);
 		double endAngle = std::max(CenterAngle1, CenterAngle1+angleChange);
 		visualization::DrawArc(center, kGridResolution, startAngle, endAngle, 0xeb34d2, viz_msg);	
-		/*
-		 * // Uncomment to visualize mid points	
 		double subAngle1 = CenterAngle1 + angleChange*0.3;
                 double subAngle2 = CenterAngle1 + angleChange*0.7;
-		Vector2f MidPoint1(centerX+  kGridResolution*cos(subAngle1), centerY+  kGridResolution*sin(subAngle1));
-                Vector2f MidPoint2(centerX+  kGridResolution*cos(subAngle2), centerY+  kGridResolution*sin(subAngle2));
+		Vector2f MidPoint1(centerX+  kGridResolution*cos(subAngle1), centerY+kGridResolution*sin(subAngle1));
+                Vector2f MidPoint2(centerX+  kGridResolution*cos(subAngle2), centerY+ kGridResolution*sin(subAngle2));
 		visualization::DrawPoint(MidPoint1, node_color, viz_msg);	
 		visualization::DrawPoint(MidPoint2, node_color, viz_msg);
-	    	*/
+	    	
 	    
 	    }
 		}
