@@ -86,14 +86,13 @@ void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_ms
 		NavGraphNode otherNode = nodes_[i];
 	       	Vector2f otherLoc = otherNode.getNodePos();
 		double otherAngle = otherNode.getNodeOrientation();
-		visualization::DrawLine(nodeLoc, otherLoc, node_color, viz_msg);
-		double startAngle = 0.0;
-		double endAngle = 0.0;
+		//double startAngle = 0.0;
+		//double endAngle = 0.0;
 		if (nodeAngle == otherAngle){
 			visualization::DrawLine(nodeLoc, otherLoc, node_color, viz_msg);	
 		}
 		else{    
-			 	
+			 /*	 	
 			 if (nodeAngle == 0.0 && otherAngle == kAngularOptionsFromNavGraph){
 				startAngle = -kAngularOptionsFromNavGraph;
 				endAngle = 0.0;	
@@ -124,6 +123,40 @@ void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_ms
    			float radius = kGridResolution;
         		Vector2f center(centerX, centerY);
 			visualization::DrawArc(center, radius, startAngle, endAngle, node_color, viz_msg);		
+			*/
+			
+			double theta1 = nodeAngle;
+			double theta2 = otherAngle;
+			if (theta1 >= M_PI) theta1 -= M_PI;
+                        if (theta2 >= M_PI) theta2 -= M_PI;
+
+			float centerX = otherLoc.x()*cos(theta2)+nodeLoc.x()*cos(theta1);
+                        float centerY = otherLoc.y()*sin(theta2)+nodeLoc.y()*sin(theta1);
+			Vector2f center(centerX, centerY);
+			std::cout << "Center in viz " << centerX << "  " << centerY << std::endl;
+
+			double CenterAngle1 = atan2(nodeLoc.y()-centerY, nodeLoc.x()-centerX);
+			double CenterAngle2 = atan2(otherLoc.y()-centerY, otherLoc.x()-centerX);
+			double angleChange = CenterAngle2-CenterAngle1;
+
+			if (angleChange < -M_PI) angleChange = M_PI/2;
+			if (angleChange > M_PI) angleChange = -M_PI/2;
+			
+			double startAngle = std::min(CenterAngle1, CenterAngle1+angleChange);
+			//double endAngle = std::max(CenterAngle1, CenterAngle1+angleChange);
+
+		        
+			visualization::DrawArc(center, kGridResolution, startAngle, startAngle+ kAngularOptionsFromNavGraph, 0xeb34d2, viz_msg);	
+			
+			double subAngle1 = CenterAngle1 + angleChange*0.3;
+                        double subAngle2 = CenterAngle1 + angleChange*0.7;
+
+			Vector2f MidPoint1(centerX+  kGridResolution*cos(subAngle1), centerY+  kGridResolution*sin(subAngle1));
+                        Vector2f MidPoint2(centerX+  kGridResolution*cos(subAngle2), centerY+  kGridResolution*sin(subAngle2));
+			visualization::DrawPoint(MidPoint1, node_color, viz_msg);	
+			visualization::DrawPoint(MidPoint2, node_color, viz_msg);	
+				
+		
 		}
 		}
    	}
@@ -212,7 +245,7 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
    // Filling up Nodes vector
    for (const Vector2f& point : initial2DGrid){
 
-	float possible_node_angle = math_util::DegToRad(0);
+	double possible_node_angle = math_util::DegToRad(0);
         while (possible_node_angle < math_util::DegToRad(360)){
 		nodes_.emplace_back(point, possible_node_angle, true, 0);
              	possible_node_angle += kAngularOptionsFromNavGraph;
@@ -250,11 +283,11 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
 		//Vector2f otherNodeLoc = otherNode.getNodePos();
 		//float otherX = otherNodeLoc.x();
 		//float otherY = otherNodeLoc.y();
-		//double otherNodeAngle = nodes_[j].getNodeOrientation();
+		//uble otherNodeAngle = nodes_[j].getNodeOrientation();
 		bool intersection = true;
 		if(otherNode == tempNode1 || otherNode == tempNode2 || otherNode == tempNode3){	
 			//std::cout << "Other Node " << otherX << " " << otherY << " " << otherNodeAngle << std::endl;
-			intersection = checkIntersectionWithMap(node, otherNode, map_);
+			intersection = checkIntersectionWithMap(node, otherNode, map_);	
 			}
 	  	if (!intersection) {
 			neighbors.push_back(j);
@@ -316,31 +349,42 @@ bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
 					     double& theta2,
 					     const vector_map::VectorMap& map_){
 
-   double subAngle1 = math_util::DegToRad(30.0);
-   double subAngle2 = math_util::DegToRad(60.0);
-   double angleDiff = theta2-theta1;
-   float dir = cos(theta1) + sin(theta1);
-   if (theta1 >= M_PI) theta1 -= M_PI;
-   if (theta2 >= M_PI) theta2 -= M_PI;
-   float centerX = x2*cos(theta2)+x1*cos(theta1);
-   float centerY = y2*sin(theta2)+y1*sin(theta1);
-   float change = kGridResolution*sin(angleDiff);
+			std::cout <<x1 << " " << y1 <<" "<<theta1<< " " << x2 << " " << y2 <<" " <<theta2 << std::endl;
+                        if (theta1 >= M_PI) theta1 -= M_PI;
+                        if (theta2 >= M_PI) theta2 -= M_PI;
 
-   Vector2f MidPoint1(centerX+change*dir*sin(subAngle1), centerY-change*dir*cos(subAngle1));
-   Vector2f MidPoint2(centerX+change*dir*sin(subAngle2), centerY-change*dir*cos(subAngle2));
+                        float centerX = x2*cos(theta2)+x1*cos(theta1);
+                        float centerY = y2*sin(theta2)+y1*sin(theta1);
+			std::cout << "Center in intersection " << centerX << "  " << centerY << std::endl;
+			
+			double CenterAngle1 = atan2(y1-centerY, x1-centerX);
+                        double CenterAngle2 = atan2(y2-centerY, x2-centerX);
+			std::cout << CenterAngle1 << " " << CenterAngle2 << std::endl;
+                        
+			double angleChange = CenterAngle2-CenterAngle1;
+			std::cout << angleChange << std::endl;
+				
+                        if (angleChange < -M_PI) angleChange = M_PI/2;
+                        if (angleChange > M_PI) angleChange = -M_PI/2;
+			std::cout << angleChange << std::endl;
+
+                        double subAngle1 = CenterAngle1 + angleChange*0.3;
+                        double subAngle2 = CenterAngle1 + angleChange*0.7;
+			std::cout << subAngle1 << "" << subAngle2 << std::endl;
+
+                        Vector2f MidPoint1(centerX+  kGridResolution*cos(subAngle1), centerY+  kGridResolution*sin(subAngle1));
+                        Vector2f MidPoint2(centerX+  kGridResolution*cos(subAngle2), centerY+  kGridResolution*sin(subAngle2));
+
+			std::cout << "MidPoints " << MidPoint1.x() << "  " << MidPoint1.y() << std::endl;
+   			line2f Edge1(x1, y1, MidPoint1.x(), MidPoint1.y());
+  			 line2f Edge2(MidPoint1.x(), MidPoint1.y(), MidPoint2.x(), MidPoint2.y());
+   			line2f Edge3(x2, y2, MidPoint2.x(), MidPoint2.y());
    
-   //std::cout << "M1 " << MidPoint1.x() << " " << MidPoint1.y() << std::endl;
-   //std::cout << "M2 " << MidPoint2.x() << " " << MidPoint2.y() << std::endl;
+  			 bool intersection1 = checkLineIntersectionWithMap(Edge1, map_);
+   			bool intersection2 = checkLineIntersectionWithMap(Edge2, map_);
+   			bool intersection3 = checkLineIntersectionWithMap(Edge3, map_);
    
-   line2f Edge1(x1, y1, MidPoint1.x(), MidPoint1.y());
-   line2f Edge2(MidPoint1.x(), MidPoint1.y(), MidPoint2.x(), MidPoint2.y());
-   line2f Edge3(x2, y2, MidPoint2.x(), MidPoint2.y());
-   
-   bool intersection1 = checkLineIntersectionWithMap(Edge1, map_);
-   bool intersection2 = checkLineIntersectionWithMap(Edge2, map_);
-   bool intersection3 = checkLineIntersectionWithMap(Edge3, map_);
-   
-   bool intersection  = (intersection1 || intersection2 || intersection3);
+  			 bool intersection  = (intersection1 || intersection2 || intersection3);
    
    return intersection;
 }
