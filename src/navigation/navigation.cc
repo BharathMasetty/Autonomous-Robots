@@ -695,7 +695,7 @@ void Navigation::Run() {
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
   // Milestone 3 will complete the rest of navigation.
-
+  /*
   if (drive_pub_.getNumSubscribers() == 0) {
     ROS_ERROR("Still no subscribers to Drive message. Not yet sending velocities.");
     return;
@@ -719,6 +719,7 @@ void Navigation::Run() {
   std::pair<Eigen::Vector2f, float> carrot = getCarrot();
   drawCarrot(carrot.first);
   runObstacleAvoidance(carrot);
+  */
   viz_pub_.publish(global_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
