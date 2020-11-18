@@ -126,17 +126,18 @@ void NavGraph::visualizeNavigationGraphEdges(const uint32_t &node_color, amrl_ms
 		if (angleChange > M_PI) angleChange = -M_PI/2;
 			
 		double startAngle = std::min(CenterAngle1, CenterAngle1+angleChange);
-		visualization::DrawArc(center, kGridResolution, startAngle, startAngle+ kAngularOptionsFromNavGraph, 0xeb34d2, viz_msg);	
+		double endAngle = std::max(CenterAngle1, CenterAngle1+angleChange);
+		visualization::DrawArc(center, kGridResolution, startAngle, endAngle, 0xeb34d2, viz_msg);	
 		
-		/*
-		 * // Uncomment to visualize mid points	
+		
+		  // Uncomment to visualize mid points	
 		double subAngle1 = CenterAngle1 + angleChange*0.3;
                 double subAngle2 = CenterAngle1 + angleChange*0.7;
-		Vector2f MidPoint1(centerX+  kGridResolution*cos(subAngle1), centerY+  kGridResolution*sin(subAngle1));
-                Vector2f MidPoint2(centerX+  kGridResolution*cos(subAngle2), centerY+  kGridResolution*sin(subAngle2));
+		Vector2f MidPoint1(centerX+  kGridResolution*cos(subAngle1), centerY+kGridResolution*sin(subAngle1));
+                Vector2f MidPoint2(centerX+  kGridResolution*cos(subAngle2), centerY+ kGridResolution*sin(subAngle2));
 		visualization::DrawPoint(MidPoint1, node_color, viz_msg);	
 		visualization::DrawPoint(MidPoint2, node_color, viz_msg);
-	    	*/
+	    	
 	    
 	    }
 		}
@@ -232,9 +233,6 @@ std::vector<Vector2f> NavGraph::pruneNodesNearObstacles(const std::vector<Vector
                     deleteNode = true;
                 }
             }
-	    if (AP.norm()<=kWallMultiplier || BP.norm() <= kWallMultiplier) {
-		    deleteNode = true;
-	    }
 
         }
 
@@ -289,8 +287,13 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map_){
        float sinOffset = kGridResolution * sin(nodeAngle);
        //std::cout << "Node " << nodeX << " " << nodeY << " " << nodeAngle << std::endl;
        double tempNodeOrientation1 = nodeAngle + kAngularOptionsFromNavGraph;
+       if (tempNodeOrientation1 >= 2*M_PI){
+		tempNodeOrientation1 -= 2*M_PI;
+	}
        double tempNodeOrientation2 = nodeAngle + 3 * kAngularOptionsFromNavGraph;
-
+	if (tempNodeOrientation2 >= 2*M_PI){
+                tempNodeOrientation2 -= 2*M_PI;
+        }
        NavGraphNode tempNode1(Vector2f(nodeX + (cosOffset / ((float) kStaggerCount)), nodeY + (sinOffset / ((float) kStaggerCount))), nodeAngle, true, 0);
        NavGraphNode tempNode2(Vector2f(nodeX + cosOffset - sinOffset, nodeY + sinOffset + cosOffset),
                               tempNodeOrientation1, true, 0);
@@ -357,10 +360,10 @@ bool NavGraph::checkLineIntersectionWithMap(const line2f& line, const vector_map
 
 bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
 					     const float& y1,
-					     double& theta1,
+					     const double& theta1,
 					     const float& x2,
 					     const float& y2,
-					     double& theta2,
+					     const double& theta2,
 					     const vector_map::VectorMap& map_){
    
     double temptheta1 = theta1;
@@ -371,7 +374,7 @@ bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
 	
     float centerX = x2*cos(temptheta2)+x1*cos(temptheta1);
     float centerY = y2*sin(temptheta2)+y1*sin(temptheta1);
-    
+
     double CenterAngle1 = atan2(y1-centerY, x1-centerX);
     double CenterAngle2 = atan2(y2-centerY, x2-centerX);    
     double angleChange = CenterAngle2-CenterAngle1;

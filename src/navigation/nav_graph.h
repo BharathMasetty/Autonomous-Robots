@@ -263,7 +263,7 @@ private:
      /*
      * safety window for nodes, equal to max dimension of the car
      */
-    const float kCarSafetyDistance = 0.535;  //TODO: Verify this
+    const float kCarSafetyDistance = 0.3;  //TODO: Verify this
 
     /*
      * Given 2 potential neighebouring nodes, check the intersection with the map
@@ -280,10 +280,10 @@ private:
      */
     bool checkCurveIntersectionWithMap(const float& startX, 
                                              const float& startY, 
-                                             double& startAngle,
+                                             const double& startAngle,
                                              const float& endX, 
                                              const float& endY, 
-                                             double& endAngle,
+                                             const double& endAngle,
 					     const vector_map::VectorMap& map_);
 
     std::pair<Eigen::Vector2f, Eigen::Vector2f> getMapCorners(const vector_map::VectorMap &map);
