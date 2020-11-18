@@ -256,6 +256,10 @@ private:
      */
     std::unordered_map<NavGraphNode, std::vector<uint32_t>> neighbors_;
  	
+    /*
+     * Constant used t0 magnifiy the wall dimensions to avoid node at gaps between walls.
+     */ 
+    const float kWallMultiplier = 0.9;    
      /*
      * safety window for nodes, equal to max dimension of the car
      */
@@ -276,10 +280,10 @@ private:
      */
     bool checkCurveIntersectionWithMap(const float& startX, 
                                              const float& startY, 
-                                             const double& startAngle,
+                                             double& startAngle,
                                              const float& endX, 
                                              const float& endY, 
-                                             const double& endAngle,
+                                             double& endAngle,
 					     const vector_map::VectorMap& map_);
 
     std::pair<Eigen::Vector2f, Eigen::Vector2f> getMapCorners(const vector_map::VectorMap &map);
