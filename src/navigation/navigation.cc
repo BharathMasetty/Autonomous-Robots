@@ -130,9 +130,9 @@ void Navigation::createNavGraph(){
   navigation_graph_.createNavigationGraph(map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
-  navigation_graph_.visualizeNavigationGraphPoints(0x34b4eb, local_viz_msg_);
+  navigation_graph_.visualizeNavigationGraphPoints(0x34b4eb, global_viz_msg_);
   ROS_INFO("Graph Points visualized!");
-  navigation_graph_.visualizeNavigationGraphEdges(0x34b4eb, local_viz_msg_);
+  navigation_graph_.visualizeNavigationGraphEdges(0x34b4eb, global_viz_msg_);
   ROS_INFO("Graph Edges visualized!");
 }
 
@@ -689,10 +689,8 @@ void Navigation::displayGlobalPath() {
 }
 
 void Navigation::Run() {
- // visualization::ClearVisualizationMsg(local_viz_msg_);
+ visualization::ClearVisualizationMsg(local_viz_msg_);
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
-  //navigation_graph_.visualizeNavigationGraphPoints(0x34b4eb, local_viz_msg_);
-  //navigation_graph_.visualizeNavigationGraphEdges(0x34b4eb, local_viz_msg_);
   
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
@@ -721,7 +719,7 @@ void Navigation::Run() {
   //std::pair<Eigen::Vector2f, float> carrot = getCarrot();
   //drawCarrot(carrot.first);
   //runObstacleAvoidance(carrot);
-  //viz_pub_.publish(global_viz_msg_);
+  viz_pub_.publish(global_viz_msg_);
   viz_pub_.publish(local_viz_msg_);
 }
 
