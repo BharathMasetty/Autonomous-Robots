@@ -258,7 +258,7 @@ namespace nav_graph {
                     Eigen::Vector2f next_pos = next.getNodePos();
                     Eigen::Vector2f goal_pos = nav_goal_loc.getNodePos();
                     double priority = new_cost + computeHeuristic(next_pos, goal_pos);
-                    frontier.Push(next, priority);
+                    frontier.Push(next, -1 * priority);
                     came_from[next] = current;
                 }
             }
