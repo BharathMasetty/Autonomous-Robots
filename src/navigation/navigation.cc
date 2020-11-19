@@ -644,6 +644,18 @@ bool Navigation::planStillValid() {
                 global_plan_to_execute_.end()).swap(global_plan_to_execute_);
     }
 
+    // Check that the first node in the trajectory (not including the one that we've just passed) is reachable from the
+    // current position
+    // TODO Validate this. It's possible that if the edge is a curve, that won't intersect even if the straight line
+    //  connection (used here) does, so perhaps it could get stuck.
+    if (global_plan_to_execute_.size() > 1) {
+        if (map_.Intersects(robot_loc_, global_plan_to_execute_[1].getNodePos())) {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
     return true;
 }
 
