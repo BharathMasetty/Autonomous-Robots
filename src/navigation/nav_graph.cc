@@ -225,19 +225,38 @@ namespace nav_graph {
         }
     }
 
+    void visualizeSearchTree(const std::unordered_map<NavGraphNode, NavGraphNode> &came_from,
+                             amrl_msgs::VisualizationMsg &viz_msg, ros::Publisher viz_pub, const NavGraphNode &node, const std::vector<NavGraphNode> &neighbors) {
+        visualization::ClearVisualizationMsg(viz_msg);
+        for (const auto & connection : came_from) {
+            visualization::DrawLine(connection.first.getNodePos(), connection.second.getNodePos(), 0x84f542, viz_msg);
+        }
+        for (const NavGraphNode &neighbor : neighbors) {
+            visualization::DrawLine(node.getNodePos(), neighbor.getNodePos(), 0x3492eb, viz_msg);
+        }
+        viz_pub.publish(viz_msg);
+    }
+
     //we also need to define the start and goal nodes (assuming both are global variables) ///Please create nav_goal_loc_ and nav_start_loc_ as a NavGraphNode
     std::vector<NavGraphNode> GetPathToGoal(const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_start_loc,
-                                            const NavGraph &nav_graph) {
+                                            const NavGraph &nav_graph, const bool &visualize_search_tree,
+                                            amrl_msgs::VisualizationMsg &viz_msg, ros::Publisher viz_pub) {
         std::unordered_map<NavGraphNode, NavGraphNode> came_from;
         std::unordered_map<NavGraphNode, double> cost_so_far;
         SimpleQueue<NavGraphNode, double> frontier;
+        std::unordered_map<NavGraphNode, double> priority_map;
 
         frontier.Push(nav_start_loc, computeHeuristic(nav_start_loc.getNodePos(), nav_goal_loc.getNodePos()));
 
         cost_so_far[nav_start_loc] = 0;
+        priority_map[nav_start_loc] = computeHeuristic(nav_start_loc.getNodePos(), nav_goal_loc.getNodePos());
+        std::vector<int> char_results;
 
         while (!frontier.Empty()) {
+
             NavGraphNode current = frontier.Pop();
+            ROS_INFO_STREAM("Priority for expanded node " << priority_map[current]);
+            priority_map.erase(current);
 
             if (current == nav_goal_loc) {
                 std::vector<NavGraphNode> path;
@@ -248,10 +267,14 @@ namespace nav_graph {
                     path.emplace_back(node_to_find_parent_for);
                 }
                 std::reverse(path.begin(), path.end());
+                if (visualize_search_tree) {
+                    visualizeSearchTree(came_from, viz_msg, viz_pub, nav_goal_loc, {});
+                }
                 return path;
             }
             std::vector<NavGraphNode> neighbors = nav_graph.getNeighbors(current);
             for (NavGraphNode next : neighbors) {
+                ROS_INFO_STREAM("Cost " << ComputeCost(current, next));
                 double new_cost = cost_so_far[current] + ComputeCost(current, next);
                 if ((cost_so_far.find(next) == cost_so_far.end()) || (new_cost < cost_so_far[next])) {
                     cost_so_far[next] = new_cost;
@@ -262,8 +285,17 @@ namespace nav_graph {
                     came_from[next] = current;
                 }
             }
+            if (visualize_search_tree) {
+                visualizeSearchTree(came_from, viz_msg, viz_pub, current, neighbors);
+                for (const auto &priority_pair : priority_map) {
+                    ROS_INFO_STREAM("Priority in queue " << priority_pair.second);
+                }
+                char_results.emplace_back(getchar());
+            }
         }
         ROS_INFO_STREAM("Could not find path to goal");
+
+        visualizeSearchTree(came_from, viz_msg, viz_pub, nav_goal_loc, {});
         return {};
     }
 

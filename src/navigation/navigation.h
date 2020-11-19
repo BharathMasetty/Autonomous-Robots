@@ -142,13 +142,13 @@ class Navigation {
    * Default weight that clearance should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_clearance_weight_.
    */
-  const double kDefaultClearanceWeight = 0.005;
+  const double kDefaultClearanceWeight = 0.001;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
-  const double kDefaultCurvatureWeight = -0.005;
+  const double kDefaultCurvatureWeight = -0.001;
 
   /**
    * ROS parameter name for setting the clearance weight for the path scoring function.

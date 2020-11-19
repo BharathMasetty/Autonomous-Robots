@@ -131,12 +131,12 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
 void Navigation::createNavGraph(){
   permanent_navigation_graph_.createNavigationGraph(map_);
   is_nav_graph_ready_ = true;
-  ROS_INFO("Navigation graph created!");
-  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
-  ROS_INFO("Graph Points visualized!");
-  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
-  ROS_INFO("Graph Edges visualized!");
-  viz_pub_.publish(global_viz_msg_);
+//  ROS_INFO("Navigation graph created!");
+//  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
+//  ROS_INFO("Graph Points visualized!");
+//  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
+//  ROS_INFO("Graph Edges visualized!");
+//  viz_pub_.publish(global_viz_msg_);
 }
 
 void Navigation::addCarDimensionsAndSafetyMarginAtPosToVisMessage(
@@ -265,7 +265,7 @@ std::unordered_map<double, double> Navigation::getPathLengthForClosestPointOfApp
             }
 
             // Arc length is radius times angle
-            path_len_for_closest_point_of_approach[curvature] = rad_of_turn * angle;
+            path_len_for_closest_point_of_approach[curvature] = rad_of_turn * angle + 0.1;
         }
     }
     return path_len_for_closest_point_of_approach;
@@ -704,7 +704,9 @@ void Navigation::Run() {
       goal_node_ = start_goal_nodes.second;
       start_node_ = start_goal_nodes.first;
       ROS_INFO_STREAM("Planning path ");
-      global_plan_to_execute_ = nav_graph::GetPathToGoal(goal_node_, start_goal_nodes.first, temp_node_nav_graph_);
+      global_plan_to_execute_ = nav_graph::GetPathToGoal(goal_node_, start_goal_nodes.first, temp_node_nav_graph_, true, global_viz_msg_, viz_pub_);
+      viz_pub_.publish(global_viz_msg_);
+      ROS_INFO_STREAM(getchar());
       ROS_INFO_STREAM("Done planning path");
       // Plan
   }
@@ -718,7 +720,9 @@ void Navigation::Run() {
       ROS_INFO_STREAM("Replanning!");
       nav_graph::NavGraphNode updated_start = temp_node_nav_graph_.updateStart(std::make_pair(robot_loc_, robot_angle_));
       start_node_ = updated_start;
-      global_plan_to_execute_ = nav_graph::GetPathToGoal(goal_node_, updated_start, temp_node_nav_graph_);
+      global_plan_to_execute_ = nav_graph::GetPathToGoal(goal_node_, updated_start, temp_node_nav_graph_, true, global_viz_msg_, viz_pub_);
+      viz_pub_.publish(global_viz_msg_);
+      ROS_INFO_STREAM(getchar());
   }
 
   if (global_plan_to_execute_.empty()) {

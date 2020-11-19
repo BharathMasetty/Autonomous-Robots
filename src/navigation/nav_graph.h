@@ -556,6 +556,9 @@ double computeHeuristic(const Eigen::Vector2f& node_pos,const Eigen::Vector2f& n
  */
 double ComputeCost(const NavGraphNode& current, const NavGraphNode& next);
 
+void visualizeSearchTree(const std::unordered_map<NavGraphNode, NavGraphNode> &came_from,
+                         amrl_msgs::VisualizationMsg &viz_msg, ros::Publisher viz_pub, const NavGraphNode &node, const std::vector<NavGraphNode> &neighbors);
+
 /**
  * Get a path from the start location to the goal location using the fixed nav graph (will need to add temporary nodes).
  *
@@ -564,7 +567,8 @@ double ComputeCost(const NavGraphNode& current, const NavGraphNode& next);
  * @param nav_graph         Navigation graph with fixed resolution to plan across.
  */
 std::vector<NavGraphNode> GetPathToGoal(const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_start_loc,
-                                        const NavGraph &nav_graph);
+                                        const NavGraph &nav_graph,
+                                        const bool &visualize_search_tree, amrl_msgs::VisualizationMsg &viz_msg, ros::Publisher viz_pub);
 } // end nav_graph
 
 #endif //CS393R_STARTER_NAV_GRAPH_H
