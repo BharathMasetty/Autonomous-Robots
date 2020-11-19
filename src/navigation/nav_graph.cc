@@ -198,8 +198,8 @@ namespace nav_graph {
         } else {
             if (current.isGridAligned() && next.isGridAligned()) {
                 // This should be the arc length instead of diagonal. Multiplying by 1/sqrt(2) gets us the grid size and
-                // multiplying by PI/4 gets the arc length for a 90 degree arc.
-                return M_PI_4 * (current_pos - next_pos).norm() * M_SQRT1_2;
+                // multiplying by PI/2 gets the arc length for a 90 degree arc.
+                return M_PI_2 * (current_pos - next_pos).norm() * M_SQRT1_2;
             } else {
                 if (current.isGridAligned()) {
                     // This is going to the goal
@@ -283,6 +283,8 @@ void NavGraph::visualizeConnectionsFromNode(const NavGraphNode &node, amrl_msgs:
             double theta2 = otherAngle;
             if (theta1 >= M_PI) theta1 -= M_PI;
             if (theta2 >= M_PI) theta2 -= M_PI;
+            if (theta1 < 0) theta1 += M_PI;
+            if (theta2 < 0) theta2 += M_PI;
 
             float centerX = otherLoc.x()*cos(theta2)+nodeLoc.x()*cos(theta1);
             float centerY = otherLoc.y()*sin(theta2)+nodeLoc.y()*sin(theta1);
@@ -563,6 +565,8 @@ bool NavGraph::checkCurveIntersectionWithMap(const float& x1,
     
     if (temptheta1 >= M_PI) temptheta1 -= M_PI;
     if (temptheta2 >= M_PI) temptheta2 -= M_PI;
+    if (temptheta1 < 0) temptheta1 += M_PI;
+    if (temptheta2 < 0) temptheta2 += M_PI;
 	
     float centerX = x2*cos(temptheta2)+x1*cos(temptheta1);
     float centerY = y2*sin(temptheta2)+y1*sin(temptheta1);
