@@ -231,7 +231,7 @@ public:
     /*
      * Creates the navigation graph without initial and final node
      */
-    void createNavigationGraph(const vector_map::VectorMap& map_);
+    void createNavigationGraph(const vector_map::VectorMap& map, const vector_map::VectorMap &inflated_map);
     
     /*
      * To visualize the nodes
@@ -387,6 +387,11 @@ private:
      * Map of the environment to check collisions against.
      */
     vector_map::VectorMap map_;
+
+    /**
+     * Inflated map of the environment.
+     */
+    vector_map::VectorMap inflated_map_;
 
     /**
      * Map of node to its index in the nodes list.
