@@ -92,6 +92,8 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
   recent_executed_commands.resize(kNumActLatencySteps);
 
   map_.Load(map_file_);
+  computeInflatedMap(map_, inflated_map_);
+
   createNavGraph();
   InitRosHeader("base_link", &drive_msg_.header);
 
@@ -101,6 +103,18 @@ Navigation::Navigation(const string& map_file, ros::NodeHandle* n) :
 //  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-14.033, 8.662), M_PI_2, false, 2));
 //  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-14.033, 11.662), M_PI_2, false, 3));
 //  global_plan_to_execute_.emplace_back(nav_graph::NavGraphNode(Vector2f(-13.412, 18), M_PI_2, false, 4));
+}
+
+void Navigation::computeInflatedMap(const vector_map::VectorMap &original_map, vector_map::VectorMap &new_map) {
+    std::vector<geometry::line2f> new_lines;
+    for (const geometry::line2f &line : original_map.lines) {
+        Vector2f unit_vec = (line.p1 - line.p0) / line.Length();
+        Vector2f perp_vec = geometry::Perp(unit_vec);
+        new_lines.emplace_back(geometry::line2f(line.p0 - (kMapInflationAmount * perp_vec), line.p1 - (kMapInflationAmount * perp_vec)));
+        new_lines.emplace_back(geometry::line2f(line.p0 + (kMapInflationAmount * perp_vec), line.p1 + (kMapInflationAmount * perp_vec)));
+        new_lines.emplace_back(geometry::line2f(line.p0 - (kMapInflationAmount * unit_vec), line.p1 + (kMapInflationAmount * unit_vec)));
+    }
+    new_map = vector_map::VectorMap(new_lines);
 }
 
 void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
@@ -129,7 +143,7 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
 }
 
 void Navigation::createNavGraph(){
-  permanent_navigation_graph_.createNavigationGraph(map_);
+  permanent_navigation_graph_.createNavigationGraph(map_, inflated_map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
   permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
@@ -675,6 +689,10 @@ void Navigation::Run() {
   visualization::ClearVisualizationMsg(global_viz_msg_);
 
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
+
+  for (const geometry::line2f &inflated_lines : inflated_map_.lines) {
+      visualization::DrawLine(inflated_lines.p0, inflated_lines.p1, 0x7b32a8, global_viz_msg_);
+  }
 
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.

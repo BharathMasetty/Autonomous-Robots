@@ -121,6 +121,12 @@ class Navigation {
   const double kDefaultDesiredClearance = 0.2;
 
   /**
+   * Amount to inflate map by. Lines will be 2x this much longer and lines will be added to each side of each line this
+   * far away.
+   */
+  const double kMapInflationAmount = 0.2;
+
+  /**
    * Approximate stopping distance at max velocity.
    *
    * Calculation is stopping distance assuming continuous and perfect motor command execution, plus some additional
@@ -324,6 +330,11 @@ class Navigation {
 
   // Map of the environment.
   vector_map::VectorMap map_;
+
+  /**
+   * Inflated map of the environment.
+   */
+  vector_map::VectorMap inflated_map_;
 
   /**
    * True if we've just set a goal and need to replan. False, if we should continue working toward the last set goal.
@@ -601,6 +612,14 @@ class Navigation {
    * Display the global path.
    */
   void displayGlobalPath();
+
+  /**
+   * Inflate the map by extending each line on both sides of the line, and put lines paralleling each line.
+   *
+   * @param original_map[in]    Original map.
+   * @param new_map[out]        Map with additional lines and the original lines extended.
+   */
+  void computeInflatedMap(const vector_map::VectorMap &original_map, vector_map::VectorMap &new_map);
 
   /**
    * True if the car is roughly along the path between the two nodes, false if it is outside these nodes. Car can
