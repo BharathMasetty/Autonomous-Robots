@@ -433,8 +433,9 @@ std::vector<Vector2f> NavGraph::pruneNodesNearObstacles(const std::vector<Vector
 }
 
 
-void NavGraph::createNavigationGraph(const vector_map::VectorMap& map){
+void NavGraph::createNavigationGraph(const vector_map::VectorMap& map, const vector_map::VectorMap &inflated_map){
     map_ = map;
+    inflated_map_ = inflated_map;
 
    std::cout << "Nav Graph compute Started" << std::endl;
 
@@ -495,7 +496,7 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map){
        for (const NavGraphNode &possible_neighbor : possible_neighbors) {
            if (node_index_map_.find(possible_neighbor) != node_index_map_.end()) {
                size_t neighbor_num = node_index_map_.at(possible_neighbor);
-               if (!checkIntersectionWithMap(node, possible_neighbor, map)) {
+               if (!checkIntersectionWithMap(node, possible_neighbor, inflated_map)) {
                    neighbors.push_back(neighbor_num);
                    edges_count++;
                }
