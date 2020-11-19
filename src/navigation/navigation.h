@@ -90,7 +90,7 @@ class Navigation {
   /**
    * If we have this distance remaining, say that we've met the goal.
    */
-  const double kStopDist = 0.03;
+  const double kStopDist = 0.01;
 
   /**
    * Distance that we must get within to say we've reached the goal.
@@ -148,13 +148,32 @@ class Navigation {
    * Default weight that clearance should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_clearance_weight_.
    */
-  const double kDefaultClearanceWeight = 0.005;
+  // TODO this should be validated, I'm not confident that the most recent change here improved performance
+  const double kDefaultClearanceWeight = 0.000;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
-  const double kDefaultCurvatureWeight = -0.005;
+  // TODO this should be validated, I'm not confident that the most recent change here improved performance
+  const double kDefaultCurvatureWeight = -0.0;
+
+  /**
+   * If there are no "reasonably open" paths, this threshold defines a small clearance. A flat penalty is applied to
+   * curvatures with clearances less than this. clearance is less than this. This is sort of used to create another
+   * tier of "reasonably open" that is more constrained than the "reasonably open" categorization that can be used when
+   * the car can travel at full speeds.
+   *
+   * TODO tune this. It might be possible to get rid of this and just keep the multiplicative penalty instead.
+   */
+  const double kSmallClearanceThreshold = 0.05;
+
+  /**
+   * Flat penalty applied to curvatures that have a small clearance.
+   *
+   * TODO tune this. It might be possible to get rid of this and just keep the multiplicative penalty instead.
+   */
+  const double kSmallClearancePenalty = -3.0;
 
   /**
    * ROS parameter name for setting the clearance weight for the path scoring function.
@@ -243,6 +262,18 @@ class Navigation {
   const float kCarrotCrossSize = 0.3;
 
   /**
+   * Maximum distance for the carrot.
+   *
+   * TODO tune this.
+   */
+  const float kMaxCarrotDistance = 6.0;
+
+  /**
+   * Minimum possible x coordinate for the carrot in the base link frame (want the carrot to be forward, generally).
+   */
+  const float kMinCarrotXRelCar = 0.1;
+
+  /**
    * Executed commands. This will have kNumActLatency steps in it and with the most recent command at index 0 and the
    * least recent command last.
    */
@@ -290,7 +321,7 @@ class Navigation {
   /**
    * Maximum angular deviation from the plan. Does take angle along arcs between nodes into account.
    */
-  const float kAngularDeviationFromPlanAllowance = M_PI_4;
+  const float kAngularDeviationFromPlanAllowance = M_PI / 8;
 
   // Whether navigation is complete.
   bool nav_complete_;
