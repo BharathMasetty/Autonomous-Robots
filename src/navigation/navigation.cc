@@ -145,12 +145,12 @@ void Navigation::ObservePointCloud(const vector<Vector2f>& cloud,
 void Navigation::createNavGraph(){
   permanent_navigation_graph_.createNavigationGraph(map_, inflated_map_);
   is_nav_graph_ready_ = true;
-  ROS_INFO("Navigation graph created!");
-  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
-  ROS_INFO("Graph Points visualized!");
-  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
-  ROS_INFO("Graph Edges visualized!");
-  viz_pub_.publish(global_viz_msg_);
+//  ROS_INFO("Navigation graph created!");
+//  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
+//  ROS_INFO("Graph Points visualized!");
+//  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
+//  ROS_INFO("Graph Edges visualized!");
+//  viz_pub_.publish(global_viz_msg_);
 }
 
 void Navigation::addCarDimensionsAndSafetyMarginAtPosToVisMessage(
@@ -386,7 +386,11 @@ double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(
 }
 
 double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance, const double &optimal_curvature) {
-    return free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
+    double very_small_clearance_penalty = 0.0;
+    if (clearance < 0.05) {
+        very_small_clearance_penalty = -3.0;
+    }
+    return very_small_clearance_penalty + free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
@@ -420,7 +424,7 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     const int startIndex = 60; // -90 Degrees wrt base   
     const int endIndex = 1020;   // +90 Degrees wrt base
     // TODO: Probably make this a ROS Param Later as needed.
-    const double kClearanceOffset = 0.1; 
+    const double kClearanceOffset = 0.1;
     std::vector<double> notHitting_r;
     // aplha is angle made by r and r_p at IC
     // We are keeping track of this extra angle for notHitting points and 
@@ -570,9 +574,10 @@ std::pair<Eigen::Vector2f, float> Navigation::getCarrot() {
     // that the local planner will be able to steer away from walls enough to handle this approximation.
     nav_graph::NavGraphNode last_reachable_node = global_plan_to_execute_[1];
     for (size_t i = 2; i < global_plan_to_execute_.size(); i++) {
-        if (!map_.Intersects(global_plan_to_execute_[i].getNodePos(), robot_loc_)) {
+        if ((!map_.Intersects(global_plan_to_execute_[i].getNodePos(), robot_loc_)) && ((global_plan_to_execute_[i].getNodePos() - robot_loc_).norm() < 6.0)) {
             Vector2f node_pos_rel_robot = nav_graph::inverseTransformPoint(global_plan_to_execute_[i].getNodePos(), 0, robot_loc_, robot_angle_).first;
-            if (node_pos_rel_robot.x() >= 0) {
+            // Consider checking if curvature is executable (greater than or equal to 1)
+            if (node_pos_rel_robot.x() >= 0.1) {
                 last_reachable_node = global_plan_to_execute_[i];
             }
         } else {
@@ -699,10 +704,10 @@ void Navigation::Run() {
   visualization::ClearVisualizationMsg(global_viz_msg_);
 
   addCarDimensionsAndSafetyMarginToVisMessage(local_viz_msg_);
-
-  for (const geometry::line2f &inflated_lines : inflated_map_.lines) {
-      visualization::DrawLine(inflated_lines.p0, inflated_lines.p1, 0x7b32a8, global_viz_msg_);
-  }
+//
+//  for (const geometry::line2f &inflated_lines : inflated_map_.lines) {
+//      visualization::DrawLine(inflated_lines.p0, inflated_lines.p1, 0x7b32a8, global_viz_msg_);
+//  }
 
   // Create Helper functions here
   // Milestone 1 will fill out part of this class.
@@ -737,8 +742,8 @@ void Navigation::Run() {
       // Plan
   }
 //  ROS_INFO_STREAM("Has plan of length " << global_plan_to_execute_.size());
-  temp_node_nav_graph_.visualizeConnectionsFromNode(start_node_, global_viz_msg_);
-  temp_node_nav_graph_.visualizeGoalEdges(goal_node_.getNodePos(), global_viz_msg_);
+//  temp_node_nav_graph_.visualizeConnectionsFromNode(start_node_, global_viz_msg_);
+//  temp_node_nav_graph_.visualizeGoalEdges(goal_node_.getNodePos(), global_viz_msg_);
 
 //  temp_node_nav_graph_.visualizeNavigationGraphPoints( global_viz_msg_);
   displayGlobalPath();

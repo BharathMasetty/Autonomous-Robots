@@ -87,10 +87,12 @@ class Navigation {
    */
   const double kMaxVel = 1.0;
 
+  bool just_replanned_ = false;
+
   /**
    * If we have this distance remaining, say that we've met the goal.
    */
-  const double kStopDist = 0.03;
+  const double kStopDist = 0.01;
 
   /**
    * Distance that we must get within to say we've reached the goal.
@@ -148,13 +150,13 @@ class Navigation {
    * Default weight that clearance should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_clearance_weight_.
    */
-  const double kDefaultClearanceWeight = 0.005;
+  const double kDefaultClearanceWeight = 0.000;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
-  const double kDefaultCurvatureWeight = -0.005;
+  const double kDefaultCurvatureWeight = -0.0;
 
   /**
    * ROS parameter name for setting the clearance weight for the path scoring function.
@@ -290,7 +292,7 @@ class Navigation {
   /**
    * Maximum angular deviation from the plan. Does take angle along arcs between nodes into account.
    */
-  const float kAngularDeviationFromPlanAllowance = M_PI_4;
+  const float kAngularDeviationFromPlanAllowance = M_PI / 8;
 
   // Whether navigation is complete.
   bool nav_complete_;
