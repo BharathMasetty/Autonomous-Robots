@@ -180,40 +180,40 @@ class ParticleFilter {
   /**
    * Default number of particles.
    */
-  const int kDefaultNumParticles = 75;
+  const int kDefaultNumParticles = 25;
 
   /**
    * Default value for the standard deviation to use when setting the x component of the initial particles.
    */
-  const double kDefaultInitialXStdDev = 1.0;
+  const double kDefaultInitialXStdDev = 0.25;
 
   /**
    * Default value for the standard deviation to use when setting the y component of the initial particles.
    */
-  const double kDefaultInitialYStdDev = 1.0;
+  const double kDefaultInitialYStdDev = 0.25;
 
   /**
    * Default value for the standard deviation to use when setting the theta component of the initial particles.
    */
-  const double kDefaultInitialThetaStdDev = 0.4;
+  const double kDefaultInitialThetaStdDev = 0.2;
 
   /**
    * Default value for the first motion model parameter (used in standard deviation of rotation).
    * error in rot because of rot
    */
-  const double kDefaultMotionModelAlpha1 = 0.2;
+  const double kDefaultMotionModelAlpha1 = 0.001;
 
   /**
    * Default value for the second motion model parameter (used in standard deviation of rotation).
    * error in rot because of trans
    */
-  const double kDefaultMotionModelAlpha2 = 0.2;
+  const double kDefaultMotionModelAlpha2 = 0.001;
 
   /**
    * Default value for the third motion model parameter (used in standard deviation of translation).
    * error in trans because of trans
    */
-  const double kDefaultMotionModelAlpha3 = 0.06;
+  const double kDefaultMotionModelAlpha3 = 0.001;
 
   /**
    * Default value for the fourth motion model parameter (used in standard deviation of translation)
@@ -330,7 +330,7 @@ class ParticleFilter {
    /**
     * K = Number of update steps before resampling
     */
-   const int kDefaultObsK = 3;
+   const int kDefaultObsK = 5;
    int obs_k_;
    /**
     * Pointer to  keep track of the best weight particle after the latest update step
