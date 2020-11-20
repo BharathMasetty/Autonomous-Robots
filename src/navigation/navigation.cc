@@ -119,8 +119,45 @@ void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
 }
 
 void Navigation::UpdateLocation(const Vector2f& loc, float angle) {
-    robot_loc_ = loc;
-    robot_angle_ = angle;
+    //robot_loc_ = loc;
+    //robot_angle_ = angle;
+    //return;
+    // Latancy compensation in robot location estimate
+    ROS_INFO_STREAM("UPDATE LOCATION PART");
+    std::cout << loc.x() << " " << loc.y() << " " << angle << std::endl;
+    Vector2f curr_loc = loc;
+    float curr_angle = angle;
+    for(const AckermannCurvatureDriveMsg& past_command : recent_executed_commands){
+	double curvature = past_command.curvature;
+        float velocity = past_command.velocity;
+	std::cout << velocity << " " << curvature << std::endl;
+	if (past_command.curvature != 0){
+    		ROS_INFO_STREAM("Non zero curvature");
+		// angle at the center for the nonzero curvature
+		Vector2f unitAlongpreviousRobotLoc(cos(curr_angle), sin(curr_angle));
+		Eigen::Rotation2Df rotate(M_PI_2);	
+		Vector2f radiusVector =  rotate*unitAlongpreviousRobotLoc*(1/curvature);
+		Vector2f Center = curr_loc + radiusVector;
+		std::cout << "center " << Center.x() << " " << Center.y() << std::endl;	
+	        double angleAtCenter = atan2(curr_loc.y()-Center.y(), curr_loc.x()-Center.x());
+		std::cout<< "current angle " << angleAtCenter<< std::endl;
+		double newAngleatCenter = angleAtCenter + velocity*kLoopExecutionDelay*curvature;
+		std::cout<< "new angle " << newAngleatCenter  <<  std::endl;
+		float radius = std::abs(1/curvature);
+		curr_loc = Vector2f(Center.x()+cos(newAngleatCenter)*radius, Center.y()+sin(newAngleatCenter)*radius);
+		curr_angle = curr_angle + velocity*kLoopExecutionDelay*curvature;
+    		std::cout << curr_loc.x() << " " << curr_loc.y() << " " << curr_angle << std::endl;
+	}
+	else{
+    		ROS_INFO_STREAM("zero curvature");
+		Vector2f unitAlongpreviousRobotLoc(cos(curr_angle), sin(curr_angle));
+		curr_loc = curr_loc + velocity*kLoopExecutionDelay*unitAlongpreviousRobotLoc;
+    		std::cout << curr_loc.x() << " " << curr_loc.y() << " " << curr_angle << std::endl;
+	}
+    }
+    robot_loc_ = curr_loc;
+    robot_angle_ = curr_angle;
+    std::cout << robot_loc_.x() << " " << robot_loc_.y() << " " << robot_angle_ << std::endl;
 }
 
 void Navigation::UpdateOdometry(const Vector2f& loc,
@@ -139,9 +176,9 @@ void Navigation::createNavGraph(){
   permanent_navigation_graph_.createNavigationGraph(map_, inflated_map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
-  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
+  //permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
   ROS_INFO("Graph Points visualized!");
-  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
+  //permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
   ROS_INFO("Graph Edges visualized!");
   viz_pub_.publish(global_viz_msg_);
 }

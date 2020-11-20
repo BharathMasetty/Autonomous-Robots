@@ -149,7 +149,7 @@ class Navigation {
    * paths. See scoring_clearance_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultClearanceWeight = 0.000;
+  const double kDefaultClearanceWeight = 0.01;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
