@@ -318,8 +318,23 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
 
   if (odom_initialized_) {
       double delta_trans = (odom_loc - prev_odom_loc_).norm();
+      float dir = 1.0;
+
+      // checking if car is moving back or front
+      Vector2f unrotated_disp_wrt_prev_frame = odom_loc - prev_odom_loc_;
+      Eigen::Rotation2Df rotate(-1*prev_odom_angle_);
+      Vector2f rotated_disp_wrt_prev_frame = rotate * unrotated_disp_wrt_prev_frame;
+      if (rotated_disp_wrt_prev_frame.x() < 0){ 
+	      dir *= -1.0;
+      }
 
       if ((delta_trans != 0) || ((odom_angle - prev_odom_angle_) != 0)) {
+          
+	  // summation of absolute displacements for update step
+	  dispFromLastUpdate_ += delta_trans;
+	  
+	  // adjusting change in displacement to direction
+	  delta_trans *= dir;
 
           // Implementing odometry based motion model found on pg. 136 of Probabilistic Robotics book
           float prev_odom_x = prev_odom_loc_.x();
@@ -327,10 +342,12 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
 
           float prev_odom_y = prev_odom_loc_.y();
           float curr_odom_y = odom_loc.y();
-
-          double delta_rot_1 = atan2(curr_odom_y - prev_odom_y, curr_odom_x - prev_odom_x) - prev_odom_angle_;
-          double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
-
+	  float deltay = dir*(curr_odom_y - prev_odom_y);
+	  float deltax = dir*(curr_odom_x - prev_odom_x);
+          
+	  double delta_rot_1 = atan2(deltay, deltax) - prev_odom_angle_;
+	  double delta_rot_2 = odom_angle - prev_odom_angle_ - delta_rot_1;
+	  
           // TODO ppts of this concept don't square delta_rot_1, delta_trans, or delta_rot_2. Should we?
           double delta_rot_1_std_dev =
                   sqrt((motion_model_alpha_1_ * pow(delta_rot_1, 2)) + (motion_model_alpha_2_ * pow(delta_trans, 2)));
@@ -338,9 +355,6 @@ void ParticleFilter::ObserveOdometry(const Vector2f& odom_loc,
                   (motion_model_alpha_4_ * (pow(delta_rot_1, 2) + pow(delta_rot_2, 2))));
           double delta_rot_2_std_dev =
                   sqrt((motion_model_alpha_1_ * pow(delta_rot_2, 2)) + (motion_model_alpha_2_ * pow(delta_trans, 2)));
-
-          // Keeping track of distance travelled since last update call
-          dispFromLastUpdate_ += delta_trans;
 
           for (size_t i = 0; i < particles_.size(); i++) {
 
