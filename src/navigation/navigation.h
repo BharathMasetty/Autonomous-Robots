@@ -118,7 +118,7 @@ class Navigation {
   /**
    * Default value for the clearance that a path must have to be considered "reasonably open".
    */
-  const double kDefaultDesiredClearance = 0.2;
+  const double kDefaultDesiredClearance = 0.1;
 
   /**
    * Amount to inflate map by. Lines will be 2x this much longer and lines will be added to each side of each line this
@@ -149,14 +149,14 @@ class Navigation {
    * paths. See scoring_clearance_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultClearanceWeight = 0.01;
+  const double kDefaultClearanceWeight = 0.1;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultCurvatureWeight = -0.0;
+  const double kDefaultCurvatureWeight = 0.1;
 
   /**
    * If there are no "reasonably open" paths, this threshold defines a small clearance. A flat penalty is applied to
@@ -207,7 +207,8 @@ class Navigation {
   /**
    * Number of timesteps to account for in latency compensation. (Should be actuation latency
    */
-  const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay);
+  //const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay);
+  const int kNumActLatencySteps = 1;
 
   /**
    * Color for drawing car boundaries.
@@ -241,6 +242,8 @@ class Navigation {
    */
   const uint32_t kPredictedOpenPathSafetyMarginColor = 0x84f542;
 
+  
+  const uint32_t kPredictedCloudPointsColor = 0x84f222;
   /**
    * Color of the cross for the carrot.
    */
@@ -301,7 +304,7 @@ class Navigation {
   const float b = 0.324;
   const float l = 0.535;
   const float w = 0.281;
-  const float m = 0.2; // Choosing a safety margin of 20 cm to be conservative
+  const float m = 0.1; // Choosing a safety margin of 20 cm to be conservative
   const float kAxleToRearDist = 0.5 * (l - b);
   const float kAxleToFrontDist = l - kAxleToRearDist;
 
@@ -686,6 +689,13 @@ class Navigation {
    * @param carrot Carrot that car is trying to get to as an intermediate step toward the goal.
    */
   void drawCarrot(const Eigen::Vector2f &carrot);
+
+  /*
+   * Transforming the point cloud for latancy compensation 
+   */
+
+  void  transformCloudForHighSpeeds(std::vector<Eigen::Vector2f> &pointCloud, std::vector<amrl_msgs::AckermannCurvatureDriveMsg> &pastCommands);
+
 };
 }  // namespace navigation
 

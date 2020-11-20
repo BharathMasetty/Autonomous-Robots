@@ -119,9 +119,9 @@ void Navigation::SetNavGoal(const Vector2f& loc, float angle) {
 }
 
 void Navigation::UpdateLocation(const Vector2f& loc, float angle) {
-    //robot_loc_ = loc;
-    //robot_angle_ = angle;
-    //return;
+    robot_loc_ = loc;
+    robot_angle_ = angle;
+    return;
     // Latancy compensation in robot location estimate
     ROS_INFO_STREAM("UPDATE LOCATION PART");
     std::cout << loc.x() << " " << loc.y() << " " << angle << std::endl;
@@ -416,11 +416,11 @@ double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(
 }
 
 double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance, const double &optimal_curvature) {
-    double very_small_clearance_penalty = 0.0;
+    //double very_small_clearance_penalty = 0.0;
     if (clearance < kSmallClearanceThreshold) {
-        very_small_clearance_penalty = kSmallClearancePenalty;
+        //very_small_clearance_penalty = kSmallClearancePenalty;
     }
-    return very_small_clearance_penalty + free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
+    return 0.1*free_path_len + (scoring_clearance_weight_ * clearance) - (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
@@ -561,7 +561,8 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
         compensation_velocity_sum += recent_executed_commands[i].velocity;
     }
 
-    double compensation_distance = kLoopExecutionDelay * compensation_velocity_sum;
+    //double compensation_distance = kLoopExecutionDelay * compensation_velocity_sum;
+    double compensation_distance = 0;
     double distance_remaining = std::max(0.0, distance - compensation_distance);
 
     double current_velocity = recent_executed_commands[0].velocity;
@@ -694,9 +695,49 @@ bool Navigation::planStillValid() {
     return true;
 }
 
+void Navigation::transformCloudForHighSpeeds(std::vector<Eigen::Vector2f> &pointCloud, std::vector<amrl_msgs::AckermannCurvatureDriveMsg> &pastCommands){
+
+    Vector2f curr_loc = robot_loc_;
+    float curr_angle = robot_angle_;
+    for(const AckermannCurvatureDriveMsg& past_command : recent_executed_commands){
+       	double curvature = past_command.curvature;
+       	float velocity = past_command.velocity;
+       	if (past_command.curvature != 0){
+		 float radius = std::abs(1/curvature);
+                 Vector2f center(0.0, 1/curvature);
+		 float turnSign = curvature/abs(curvature);
+                 float angleAtCenter = -turnSign*M_PI_2;
+		 float angleChange = velocity*kLoopExecutionDelay*curvature;
+		 float newAngle = angleAtCenter+angleChange;
+		 Vector2f compensatedLocInBaseFrame(center.x()+radius*cos(newAngle), center.y()+radius*sin(newAngle));
+		 curr_loc = curr_loc + compensatedLocInBaseFrame;
+		 curr_angle = curr_angle+angleChange;
+		 Eigen::Rotation2Df rotate(-1*angleChange);
+		 for (unsigned int j=0; j<= pointCloud.size(); j++){
+        		pointCloud[j]  = rotate*pointCloud[j];
+        		pointCloud[j] -= compensatedLocInBaseFrame;
+    		}
+	}
+        else{
+                 Vector2f compensatedLocInBaseFrame(velocity*kLoopExecutionDelay, 0);
+		 for (unsigned int j=0; j<= pointCloud.size(); j++){
+                        pointCloud[j] -= compensatedLocInBaseFrame;
+                 }
+                 curr_loc = curr_loc + compensatedLocInBaseFrame;
+        }
+    }
+    
+    for (unsigned int j=0; j<= pointCloud.size(); j++){
+        visualization::DrawPoint(pointCloud[j], kPredictedCloudPointsColor, local_viz_msg_);
+    }
+}
+
 void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot) {
 
     std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
+    //if (kMaxVel>1.0){
+     transformCloudForHighSpeeds(cloud_, recent_executed_commands);
+    //}
     std::unordered_map<double, double> free_path_len_for_closest_point_of_approach = getPathLengthForClosestPointOfApproach(
             carrot.first, curvatures_to_evaluate);
 
@@ -713,7 +754,6 @@ void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &c
                                           curvature_info.second.second, local_viz_msg_);
         }
     }
-
     drawCarPosAfterCurvesExecuted(free_path_len_and_clearance_by_curvature);
     // Add the best curvature last so it is highlighted in the visualization
     double best_curvature = curvature_and_dist_to_execute.first;
