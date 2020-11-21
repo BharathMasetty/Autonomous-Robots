@@ -95,7 +95,7 @@ class Navigation {
   /**
    * Distance that we must get within to say we've reached the goal.
    */
-  const double kGoalTolerance = 0.1;
+  const double kGoalTolerance = 0.2;
 
   /**
    * Amount of time between each loop execution.
