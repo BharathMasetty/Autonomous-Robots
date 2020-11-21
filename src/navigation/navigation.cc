@@ -139,9 +139,9 @@ void Navigation::createNavGraph(){
   permanent_navigation_graph_.createNavigationGraph(map_, inflated_map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
-  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
+//  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
   ROS_INFO("Graph Points visualized!");
-  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
+//  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
   ROS_INFO("Graph Edges visualized!");
   viz_pub_.publish(global_viz_msg_);
 }
@@ -565,21 +565,52 @@ std::pair<Eigen::Vector2f, float> Navigation::getCarrot() {
 
     // Since this connects nodes using straight lines instead of lattice and doesn't expand the map, this also assumes
     // that the local planner will be able to steer away from walls enough to handle this approximation.
-    nav_graph::NavGraphNode last_reachable_node = global_plan_to_execute_[1];
+    std::pair<Vector2f, float> prev_reachable_node = std::make_pair(robot_loc_, robot_angle_);
+    std::pair<Vector2f, float> last_reachable_node = std::make_pair(global_plan_to_execute_[1].getNodePos(), global_plan_to_execute_[1].getNodeOrientation());
+    bool last_node_goal = false;
+    bool not_start = false;
     for (size_t i = 2; i < global_plan_to_execute_.size(); i++) {
         if ((!map_.Intersects(global_plan_to_execute_[i].getNodePos(), robot_loc_)) && ((global_plan_to_execute_[i].getNodePos() - robot_loc_).norm() < kMaxCarrotDistance)) {
+
             Vector2f node_pos_rel_robot = nav_graph::inverseTransformPoint(global_plan_to_execute_[i].getNodePos(), 0, robot_loc_, robot_angle_).first;
             // TODO Consider checking if curvature is executable (greater than or equal to 1). That might be better than checking for a positive x value.
+
             if (node_pos_rel_robot.x() >= kMinCarrotXRelCar) {
-                last_reachable_node = global_plan_to_execute_[i];
+                not_start = true;
+                prev_reachable_node = last_reachable_node;
+                last_reachable_node = std::make_pair(global_plan_to_execute_[i].getNodePos(), global_plan_to_execute_[i].getNodeOrientation());
+                last_node_goal = !global_plan_to_execute_[i].isGridAligned();
             }
         } else {
             break;
         }
     }
 
+    if ((!last_node_goal) && (not_start)){
+        if (kAngularCarrotMaxChange < math_util::AngleDist(last_reachable_node.second, prev_reachable_node.second)) {
+            float angle_diff = AngleDiff(last_reachable_node.second, prev_reachable_node.second);
+            double radius =
+                     (last_reachable_node.first - prev_reachable_node.first).norm() / sqrt(2 * (1 - cos(angle_diff)));
+            float target_angle_change = kAngularCarrotMaxChange;
+            if (angle_diff < 0) {
+                target_angle_change = -kAngularCarrotMaxChange;
+                radius = -1 * radius;
+            } else {
+                target_angle_change = -kAngularCarrotMaxChange;
+            }
+
+            std::pair<Vector2f, float> carrot_node_in_prev_node_frame = std::make_pair(Vector2f(
+                    abs(radius) * sin(abs(target_angle_change)), radius - (radius * cos(abs(target_angle_change)))),
+                                                                                       target_angle_change);
+            std::pair<Vector2f, float> carrot_in_map = nav_graph::transformPoint(carrot_node_in_prev_node_frame.first,
+                                                                                 carrot_node_in_prev_node_frame.second,
+                                                                                 prev_reachable_node.first, prev_reachable_node.second);
+            return nav_graph::inverseTransformPoint(carrot_in_map.first, carrot_in_map.second,
+                                                    robot_loc_, robot_angle_);
+        }
+    }
     // Convert the carrot into the base link frame
-    return nav_graph::inverseTransformPoint(last_reachable_node.getNodePos(), last_reachable_node.getNodeOrientation(),
+    return nav_graph::inverseTransformPoint(last_reachable_node.first, last_reachable_node.second,
                                  robot_loc_, robot_angle_);
 }
 
@@ -606,7 +637,7 @@ bool Navigation::isCarInBetweenNodes(const nav_graph::NavGraphNode &node_1, cons
     float target_robot_angle = AngleMod(source_node_angle + (angle_diff * (car_in_line_frame.x() / line_between_nodes.Length())));
     float angle_dist = AngleDist(target_robot_angle, AngleMod(robot_angle_));
 
-    if (angle_dist > kAngularDeviationFromPlanAllowance) {
+    if ((angle_dist > kAngularDeviationFromPlanAllowance) && node_2.isGridAligned()) {
         return false;
     }
 

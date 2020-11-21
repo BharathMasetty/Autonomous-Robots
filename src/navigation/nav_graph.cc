@@ -121,7 +121,6 @@ namespace nav_graph {
                             math_util::AngleDist(end_angle, near_start_node.getNodeOrientation()) <= kCloseAngleMargin;
                 }
                 if (angle_close_enough && (!intersects_with_map)) {
-                    ROS_INFO_STREAM("Adding edge from start to " << near_start_node.getNodePos().x() << ", " << near_start_node.getNodePos().y() << ", " << near_start_node.getNodeOrientation());
                     uint32_t neighbor_index = node_index_map_[near_start_node];
                     start_neighbors.emplace_back(neighbor_index);
                 }

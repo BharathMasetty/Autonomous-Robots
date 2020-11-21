@@ -98,6 +98,12 @@ class Navigation {
   const double kGoalTolerance = 0.2;
 
   /**
+   * Maximum change to allow between the carrot and the preceding node. Interpolates a carrot at this angle if the
+   * angle would otherwise be greater.
+   */
+  const float kAngularCarrotMaxChange = M_PI / 3.0;
+
+  /**
    * Amount of time between each loop execution.
    */
   const double kLoopExecutionDelay = (1.0 / 20.0);
@@ -149,14 +155,14 @@ class Navigation {
    * paths. See scoring_clearance_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultClearanceWeight = 0.000;
+  const double kDefaultClearanceWeight = 0.005;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultCurvatureWeight = -0.0;
+  const double kDefaultCurvatureWeight = -0.005;
 
   /**
    * If there are no "reasonably open" paths, this threshold defines a small clearance. A flat penalty is applied to
@@ -173,7 +179,7 @@ class Navigation {
    *
    * TODO tune this. It might be possible to get rid of this and just keep the multiplicative penalty instead.
    */
-  const double kSmallClearancePenalty = -3.0;
+  const double kSmallClearancePenalty = -0.0;
 
   /**
    * ROS parameter name for setting the clearance weight for the path scoring function.
