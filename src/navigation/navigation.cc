@@ -383,7 +383,7 @@ double Navigation::scoreCurvature(const double &curvature, const double &free_pa
     if (clearance < kSmallClearanceThreshold) {
         very_small_clearance_penalty = kSmallClearancePenalty;
     }
-    return very_small_clearance_penalty + free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
+    return very_small_clearance_penalty + scoring_free_path_weight_*free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
