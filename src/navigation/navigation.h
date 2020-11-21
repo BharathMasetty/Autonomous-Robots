@@ -155,14 +155,14 @@ class Navigation {
    * paths. See scoring_clearance_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultClearanceWeight = 0.005;
+  const double kDefaultClearanceWeight = 1.0;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultCurvatureWeight = -0.005;
+  const double kDefaultCurvatureWeight = -0.05;
 
   /**
    * If there are no "reasonably open" paths, this threshold defines a small clearance. A flat penalty is applied to
@@ -172,7 +172,7 @@ class Navigation {
    *
    * TODO tune this. It might be possible to get rid of this and just keep the multiplicative penalty instead.
    */
-  const double kSmallClearanceThreshold = 0.05;
+  const double kSmallClearanceThreshold = -0.0 ;
 
   /**
    * Flat penalty applied to curvatures that have a small clearance.
@@ -213,7 +213,7 @@ class Navigation {
   /**
    * Number of timesteps to account for in latency compensation. (Should be actuation latency
    */
-  const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay);
+  const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay) + 10;
 
 
   /**
@@ -313,7 +313,7 @@ class Navigation {
   const float b = 0.324;
   const float l = 0.535;
   const float w = 0.281;
-  const float m = 0.2; // Choosing a safety margin of 20 cm to be conservative
+  const float m = 0.1; // Choosing a safety margin of 20 cm to be conservative
   const float kAxleToRearDist = 0.5 * (l - b);
   const float kAxleToFrontDist = l - kAxleToRearDist;
 

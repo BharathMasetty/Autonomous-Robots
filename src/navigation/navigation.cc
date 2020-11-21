@@ -384,8 +384,13 @@ double Navigation::scoreCurvature(const double &curvature, const double &free_pa
     if (clearance < kSmallClearanceThreshold) {
         very_small_clearance_penalty = kSmallClearancePenalty;
     }
-    */
-    return 0.3*free_path_len/10.0 + 0.3*clearance/(2.0/3.0) - 0.3*abs(curvature - optimal_curvature);
+    */ 
+       double very_small_clearance_penalty = 0.0;
+    if (clearance < kSmallClearanceThreshold) {
+        very_small_clearance_penalty = kSmallClearancePenalty;
+    }
+    return very_small_clearance_penalty + free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
+    //return 0.3*free_path_len/10.0 + 0.3*clearance/(2.0/3.0) - 0.3*abs(curvature - optimal_curvature);
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
@@ -522,7 +527,7 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 void Navigation::executeTimeOptimalControl(const double &distance, const double &curvature) {
 
     // Get the velocity for each of the timesteps that we need to account for in the latency compensation
-    /*
+   /* 
     double compensation_velocity_sum = 0;
     for (int i = 0; i < kNumActLatencySteps; i++) {
         compensation_velocity_sum += recent_executed_commands[i].velocity;
@@ -832,6 +837,7 @@ std::vector<Vector2f> Navigation::transformCloudForHighSpeeds(){
         else{
                  Vector2f compensatedLocInBaseFrame(velocity*kLoopExecutionDelay, 0);
                  for (uint32_t j=0; j< cloud_.size(); j++){
+			cloud[j]  = cloud_[j];
                         cloud[j] -= compensatedLocInBaseFrame;
                  }
                  curr_loc = curr_loc + compensatedLocInBaseFrame;

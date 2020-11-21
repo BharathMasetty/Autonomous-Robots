@@ -39,7 +39,7 @@ static const double kGridResolution = 1.0; // TODO tune
 /**
  * Number of increments in the grid resolution.
  */
-static const int kStaggerCount = 4;
+static const int kStaggerCount = 3;
 
 /**
  * Staggered (finer) resolution.
