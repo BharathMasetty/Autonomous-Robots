@@ -139,9 +139,9 @@ void Navigation::createNavGraph(){
   permanent_navigation_graph_.createNavigationGraph(map_, inflated_map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
-//  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
+  //  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
   ROS_INFO("Graph Points visualized!");
-//  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
+  //  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
   ROS_INFO("Graph Edges visualized!");
   viz_pub_.publish(global_viz_msg_);
 }
@@ -379,26 +379,30 @@ double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(
 }
 
 double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance, const double &optimal_curvature) {
+    /*
     double very_small_clearance_penalty = 0.0;
     if (clearance < kSmallClearanceThreshold) {
         very_small_clearance_penalty = kSmallClearancePenalty;
     }
-    return very_small_clearance_penalty + free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
+    */
+    return 0.3*free_path_len/10.0 + 0.3*clearance/(2.0/3.0) - 0.3*abs(curvature - optimal_curvature);
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
-        const std::unordered_map<double, double> &curvatures_and_free_path_len_for_closest_point_of_approach) {
+        const std::unordered_map<double, double> &curvatures_and_free_path_len_for_closest_point_of_approach,  const std::vector<Vector2f>& cloud) {
 
     std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature;
     for (const auto &curvature_and_closest_approach_arc_len : curvatures_and_free_path_len_for_closest_point_of_approach) {
         double curvature = curvature_and_closest_approach_arc_len.first;
         double free_path_len_for_closest_point_of_approach = curvature_and_closest_approach_arc_len.second;
-        free_path_len_and_clearance_by_curvature[curvature] = getFreePathLengthAndClearance(curvature, free_path_len_for_closest_point_of_approach);
+        free_path_len_and_clearance_by_curvature[curvature] = getFreePathLengthAndClearance(curvature, free_path_len_for_closest_point_of_approach, cloud);
     }
     return free_path_len_and_clearance_by_curvature;
 }
 
-std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double &curvature, const double &free_path_len_for_closest_point_of_approach) {
+std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double &curvature, 
+								    const double &free_path_len_for_closest_point_of_approach,
+								    const std::vector<Vector2f>& cloud) {
 
     // TODO: Bharath: Keep thinking of a better way to do this 
     float free_path_len = std::numeric_limits<float>::infinity();
@@ -426,7 +430,6 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     // Initializing freePathalpha at pi radians
     double freePathalpha = 3.14;
     float hittingSign = abs(curvature)/curvature;
-
     
     if (abs(curvature) > 0) {
         IC.x() = 0.0;
@@ -442,9 +445,9 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
     
         // Converting cloud to polar
         for(int i=startIndex; i<=endIndex; i++) {
-            float r_p_square = std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y() - IC.y(), 2);
+            float r_p_square = std::pow(cloud[i].x(), 2) + std::pow(cloud[i].y() - IC.y(), 2);
             r_p = std::pow(r_p_square, 0.5);
-            double op = std::pow(std::pow(cloud_[i].x(), 2) + std::pow(cloud_[i].y(), 2), 0.5);
+            double op = std::pow(std::pow(cloud[i].x(), 2) + std::pow(cloud[i].y(), 2), 0.5);
 
             // First check for free_path_length
             if (r_p >= r_min && r_p <= r_max) {
@@ -452,13 +455,13 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
                 // Side Hit
                 if (r_p < r_fc){
                     float x = std::pow(r_p_square - r_min_square, 0.5);
-                    pp_hit = std::pow(cloud_[i].x() - x ,2) + std::pow(cloud_[i].y() - kLengthFromBaseToSafetySide*hittingSign, 2);
+                    pp_hit = std::pow(cloud[i].x() - x ,2) + std::pow(cloud[i].y() - kLengthFromBaseToSafetySide*hittingSign, 2);
                 }
 
                 // Front Hit
                 if ( r_p >= r_fc) {
                     float y = hittingSign*(r - std::pow(r_p_square - std::pow(kLengthFromAxleToSafetyFront, 2) ,0.5)) ;
-                    pp_hit = std::pow(cloud_[i].x()- kLengthFromAxleToSafetyFront, 2) + std::pow(cloud_[i].y()-y, 2);
+                    pp_hit = std::pow(cloud[i].x()- kLengthFromAxleToSafetyFront, 2) + std::pow(cloud[i].y()-y, 2);
                 }
 
                 theta =  acos(1 - pp_hit/(2*r_p_square));
@@ -494,10 +497,10 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
         // default
         std::vector<Eigen::Vector2f> notHittingPoints;
         for (int i=startIndex; i<=endIndex; i++) {
-            if (abs(cloud_[i].y()) <= kLengthFromBaseToSafetySide) {
-                free_path_len = std::min(free_path_len, cloud_[i].x() - kLengthFromAxleToSafetyFront);
+            if (abs(cloud[i].y()) <= kLengthFromBaseToSafetySide) {
+                free_path_len = std::min(free_path_len, cloud[i].x() - kLengthFromAxleToSafetyFront);
             } else{
-                notHittingPoints.push_back(cloud_[i]);
+                notHittingPoints.push_back(cloud[i]);
             }
         }
         for (unsigned int i=0; i<=notHittingPoints.size(); i++) {
@@ -519,6 +522,7 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 void Navigation::executeTimeOptimalControl(const double &distance, const double &curvature) {
 
     // Get the velocity for each of the timesteps that we need to account for in the latency compensation
+    /*
     double compensation_velocity_sum = 0;
     for (int i = 0; i < kNumActLatencySteps; i++) {
         compensation_velocity_sum += recent_executed_commands[i].velocity;
@@ -526,7 +530,8 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
 
     double compensation_distance = kLoopExecutionDelay * compensation_velocity_sum;
     double distance_remaining = std::max(0.0, distance - compensation_distance);
-
+    */
+    double distance_remaining = distance;
     double current_velocity = recent_executed_commands[0].velocity;
     if (distance_remaining > kStopDist) {
 
@@ -689,13 +694,14 @@ bool Navigation::planStillValid() {
 }
 
 void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot) {
-
+ 	
+    std::vector<Vector2f> compensatedCloud = transformCloudForHighSpeeds(); 
     std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
     std::unordered_map<double, double> free_path_len_for_closest_point_of_approach = getPathLengthForClosestPointOfApproach(
             carrot.first, curvatures_to_evaluate);
 
     std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
-            getFreePathLengthsAndClearances(free_path_len_for_closest_point_of_approach);
+            getFreePathLengthsAndClearances(free_path_len_for_closest_point_of_approach, compensatedCloud);
 
     std::pair<double, double> curvature_and_dist_to_execute =
             chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature, carrot);
@@ -796,4 +802,48 @@ void Navigation::ReachedGoal(){
         nav_complete_ = true;
     }
 }
+
+std::vector<Vector2f> Navigation::transformCloudForHighSpeeds(){
+
+    Vector2f curr_loc = robot_loc_;
+    float curr_angle = robot_angle_;
+    std::vector<Vector2f> cloud;
+    cloud.resize(cloud_.size());
+    for(uint32_t i=0; i<recent_executed_commands.size(); i++){
+        AckermannCurvatureDriveMsg past_command = recent_executed_commands[i];
+        double curvature = past_command.curvature;
+        float velocity = past_command.velocity;
+        if (past_command.curvature != 0){
+                 float radius = std::abs(1/curvature);
+                 Vector2f center(0.0, 1/curvature);
+                 float turnSign = curvature/abs(curvature);
+                 float angleAtCenter = -turnSign*M_PI_2;
+                 float angleChange = velocity*kLoopExecutionDelay*curvature;
+                 float newAngle = angleAtCenter+angleChange;
+                 Vector2f compensatedLocInBaseFrame(center.x()+radius*cos(newAngle), center.y()+radius*sin(newAngle));
+                 curr_loc = curr_loc + compensatedLocInBaseFrame;
+                 curr_angle = curr_angle+angleChange;
+                 Eigen::Rotation2Df rotate(-1*angleChange);
+                 for (uint32_t j=0; j< cloud.size(); j++){
+			cloud[j]  = rotate*cloud_[j];
+                        cloud[j] -= compensatedLocInBaseFrame;
+                }
+        }
+        else{
+                 Vector2f compensatedLocInBaseFrame(velocity*kLoopExecutionDelay, 0);
+                 for (uint32_t j=0; j< cloud_.size(); j++){
+                        cloud[j] -= compensatedLocInBaseFrame;
+                 }
+                 curr_loc = curr_loc + compensatedLocInBaseFrame;
+        }
+    }
+    
+    for (uint32_t j=0; j<cloud.size(); j++){
+	visualization::DrawPoint(cloud[j], kPredictedCloudPointsColor, local_viz_msg_);
+    }
+
+    return cloud;
+}
+
+
 }  // namespace navigation

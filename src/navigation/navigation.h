@@ -215,6 +215,7 @@ class Navigation {
    */
   const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay);
 
+
   /**
    * Color for drawing car boundaries.
    */
@@ -246,7 +247,12 @@ class Navigation {
    * Color for drawing the predicted safety margin boundaries when the path is reasonably open.
    */
   const uint32_t kPredictedOpenPathSafetyMarginColor = 0x84f542;
-
+  
+  /**
+   * Color for drawing the predicted point cloud from latancy compensation
+   */
+  const uint32_t kPredictedCloudPointsColor = 0x84f222;
+  
   /**
    * Color of the cross for the carrot.
    */
@@ -580,7 +586,7 @@ class Navigation {
    * of approach (i.e. there could be more free space along the curvature, but we're not evaluating it).
    */
   std::unordered_map<double, std::pair<double, double>> getFreePathLengthsAndClearances(
-          const std::unordered_map<double, double> &curvatures_to_evaluate_with_free_path_len_to_closest_point_of_approach);
+          const std::unordered_map<double, double> &curvatures_to_evaluate_with_free_path_len_to_closest_point_of_approach,  const std::vector<Eigen::Vector2f>& compensatedCloud);
 
   /**
    * Get the free path length and clearance (distance to the closest obstacle) for the given
@@ -592,7 +598,7 @@ class Navigation {
    *
    * @return Pair with the first entry as the free path length and second entry as the clearance.
    */
-  std::pair<double, double> getFreePathLengthAndClearance(const double &curvature, const double &free_path_len_to_closest_point_of_approach);
+  std::pair<double, double> getFreePathLengthAndClearance(const double &curvature, const double &free_path_len_to_closest_point_of_approach, const std::vector<Eigen::Vector2f>& compensatedCloud);
 
   /**
    * Command the drive to traverse the given distance along this curvature. Should only issue one command (we may
@@ -692,6 +698,12 @@ class Navigation {
    * @param carrot Carrot that car is trying to get to as an intermediate step toward the goal.
    */
   void drawCarrot(const Eigen::Vector2f &carrot);
+   
+  /*
+   * Transforming the point cloud for latancy compensation
+   */
+
+  std::vector<Eigen::Vector2f> transformCloudForHighSpeeds();
 };
 }  // namespace navigation
 
