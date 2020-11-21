@@ -111,7 +111,7 @@ class Navigation {
   /**
    * Actuation latency (time between when command is issued to when motors execute the command.
    */
-  const double kActuationLatency = 0.15;
+  const double kActuationLatency = 0.25;
 
   /**
    * Number of curvatures to evaluate. These will be evenly spaced between c_min and c_max
@@ -119,7 +119,7 @@ class Navigation {
    *
    * This should be a positive odd number >= 3, so we can evaluate straight as an option.
    */
-  const int kNumCurvaturesToEval = 41;
+  const int kNumCurvaturesToEval = 81;
 
   /**
    * Default value for the clearance that a path must have to be considered "reasonably open".
@@ -155,14 +155,14 @@ class Navigation {
    * paths. See scoring_clearance_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultClearanceWeight = 0.005;
+  const double kDefaultClearanceWeight = 0.05;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
   // TODO this should be validated, I'm not confident that the most recent change here improved performance
-  const double kDefaultCurvatureWeight = -0.005;
+  const double kDefaultCurvatureWeight = -0.05;
 
   /**
    * If there are no "reasonably open" paths, this threshold defines a small clearance. A flat penalty is applied to
@@ -172,7 +172,7 @@ class Navigation {
    *
    * TODO tune this. It might be possible to get rid of this and just keep the multiplicative penalty instead.
    */
-  const double kSmallClearanceThreshold = 0.05;
+  const double kSmallClearanceThreshold = 0.0;
 
   /**
    * Flat penalty applied to curvatures that have a small clearance.
@@ -215,6 +215,7 @@ class Navigation {
    */
   const int kNumActLatencySteps = ceil(kActuationLatency / kLoopExecutionDelay);
 
+
   /**
    * Color for drawing car boundaries.
    */
@@ -246,7 +247,12 @@ class Navigation {
    * Color for drawing the predicted safety margin boundaries when the path is reasonably open.
    */
   const uint32_t kPredictedOpenPathSafetyMarginColor = 0x84f542;
-
+  
+  /**
+   * Color for drawing the predicted point cloud from latancy compensation
+   */
+  const uint32_t kPredictedCloudPointsColor = 0x84f222;
+  
   /**
    * Color of the cross for the carrot.
    */
@@ -307,7 +313,7 @@ class Navigation {
   const float b = 0.324;
   const float l = 0.535;
   const float w = 0.281;
-  const float m = 0.2; // Choosing a safety margin of 20 cm to be conservative
+  const float m = 0.1; // Choosing a safety margin of 20 cm to be conservative
   const float kAxleToRearDist = 0.5 * (l - b);
   const float kAxleToFrontDist = l - kAxleToRearDist;
 
@@ -382,6 +388,11 @@ class Navigation {
    * Weight for the clearance in the scoring function. Clearance is good so this should be a positive number.
    */
   double scoring_clearance_weight_;
+
+    /**
+   * Scoring free path weight
+   */
+  double scoring_free_path_weight_ = 1.15;
 
   /**
    * Weight for the curvature in the scoring function. Because our goal is along the x-axis, and lower (absolute)
@@ -580,7 +591,7 @@ class Navigation {
    * of approach (i.e. there could be more free space along the curvature, but we're not evaluating it).
    */
   std::unordered_map<double, std::pair<double, double>> getFreePathLengthsAndClearances(
-          const std::unordered_map<double, double> &curvatures_to_evaluate_with_free_path_len_to_closest_point_of_approach);
+          const std::unordered_map<double, double> &curvatures_to_evaluate_with_free_path_len_to_closest_point_of_approach,  const std::vector<Eigen::Vector2f>& compensatedCloud);
 
   /**
    * Get the free path length and clearance (distance to the closest obstacle) for the given
@@ -592,7 +603,7 @@ class Navigation {
    *
    * @return Pair with the first entry as the free path length and second entry as the clearance.
    */
-  std::pair<double, double> getFreePathLengthAndClearance(const double &curvature, const double &free_path_len_to_closest_point_of_approach);
+  std::pair<double, double> getFreePathLengthAndClearance(const double &curvature, const double &free_path_len_to_closest_point_of_approach, const std::vector<Eigen::Vector2f>& compensatedCloud);
 
   /**
    * Command the drive to traverse the given distance along this curvature. Should only issue one command (we may
@@ -692,6 +703,12 @@ class Navigation {
    * @param carrot Carrot that car is trying to get to as an intermediate step toward the goal.
    */
   void drawCarrot(const Eigen::Vector2f &carrot);
+   
+  /*
+   * Transforming the point cloud for latancy compensation
+   */
+
+  std::pair<std::vector<Eigen::Vector2f>, Eigen::Vector2f> transformCloudForHighSpeeds(const Eigen::Vector2f &carrot);
 };
 }  // namespace navigation
 
