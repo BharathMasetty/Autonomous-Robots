@@ -379,13 +379,11 @@ double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(
 }
 
 double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance, const double &optimal_curvature) {
-    /*
     double very_small_clearance_penalty = 0.0;
     if (clearance < kSmallClearanceThreshold) {
         very_small_clearance_penalty = kSmallClearancePenalty;
     }
-    */
-    return 0.3*free_path_len/10.0 + 0.3*clearance/(2.0/3.0) - 0.3*abs(curvature - optimal_curvature);
+    return very_small_clearance_penalty + scoring_free_path_weight_*free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
@@ -809,6 +807,10 @@ std::vector<Vector2f> Navigation::transformCloudForHighSpeeds(){
     float curr_angle = robot_angle_;
     std::vector<Vector2f> cloud;
     cloud.resize(cloud_.size());
+    for (uint32_t j=0; j< cloud.size(); j++){
+    	cloud[j]  = cloud_[j];
+     }
+    
     for(uint32_t i=0; i<recent_executed_commands.size(); i++){
         AckermannCurvatureDriveMsg past_command = recent_executed_commands[i];
         double curvature = past_command.curvature;
@@ -825,14 +827,14 @@ std::vector<Vector2f> Navigation::transformCloudForHighSpeeds(){
                  curr_angle = curr_angle+angleChange;
                  Eigen::Rotation2Df rotate(-1*angleChange);
                  for (uint32_t j=0; j< cloud.size(); j++){
-			cloud[j]  = rotate*cloud_[j];
+			cloud[j]  = rotate*cloud[j];
                         cloud[j] -= compensatedLocInBaseFrame;
                 }
         }
         else{
                  Vector2f compensatedLocInBaseFrame(velocity*kLoopExecutionDelay, 0);
-                 for (uint32_t j=0; j< cloud_.size(); j++){
-                        cloud[j] -= compensatedLocInBaseFrame;
+                 for (uint32_t j=0; j < cloud_.size(); j++){
+			 cloud[j] -= compensatedLocInBaseFrame;
                  }
                  curr_loc = curr_loc + compensatedLocInBaseFrame;
         }
