@@ -520,7 +520,7 @@ std::pair<double, double> Navigation::getFreePathLengthAndClearance(const double
 void Navigation::executeTimeOptimalControl(const double &distance, const double &curvature) {
 
     // Get the velocity for each of the timesteps that we need to account for in the latency compensation
-    /*
+    
     double compensation_velocity_sum = 0;
     for (int i = 0; i < kNumActLatencySteps; i++) {
         compensation_velocity_sum += recent_executed_commands[i].velocity;
@@ -528,8 +528,8 @@ void Navigation::executeTimeOptimalControl(const double &distance, const double 
 
     double compensation_distance = kLoopExecutionDelay * compensation_velocity_sum;
     double distance_remaining = std::max(0.0, distance - compensation_distance);
-    */
-    double distance_remaining = distance;
+    
+    //double distance_remaining = distance;
     double current_velocity = recent_executed_commands[0].velocity;
     if (distance_remaining > kStopDist) {
 
@@ -693,16 +693,20 @@ bool Navigation::planStillValid() {
 
 void Navigation::runObstacleAvoidance(const std::pair<Eigen::Vector2f, float> &carrot) {
  	
-    std::vector<Vector2f> compensatedCloud = transformCloudForHighSpeeds(); 
+    std::pair<std::vector<Vector2f>, Vector2f> compensatedInfo = transformCloudForHighSpeeds(carrot.first); 
+    std::pair<Eigen::Vector2f, float> compensatedCarrot;
+    compensatedCarrot.first  = compensatedInfo.second;
+    compensatedCarrot.second = carrot.second;
+
     std::vector<double> curvatures_to_evaluate = getCurvaturesToEvaluate();
     std::unordered_map<double, double> free_path_len_for_closest_point_of_approach = getPathLengthForClosestPointOfApproach(
-            carrot.first, curvatures_to_evaluate);
+            compensatedCarrot.first, curvatures_to_evaluate);
 
     std::unordered_map<double, std::pair<double, double>> free_path_len_and_clearance_by_curvature =
-            getFreePathLengthsAndClearances(free_path_len_for_closest_point_of_approach, compensatedCloud);
+            getFreePathLengthsAndClearances(free_path_len_for_closest_point_of_approach, compensatedInfo.first);
 
     std::pair<double, double> curvature_and_dist_to_execute =
-            chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature, carrot);
+            chooseCurvatureForNextTimestep(free_path_len_and_clearance_by_curvature, compensatedCarrot);
     executeTimeOptimalControl(curvature_and_dist_to_execute.second, curvature_and_dist_to_execute.first);
 
     for (const auto &curvature_info : free_path_len_and_clearance_by_curvature) {
@@ -801,10 +805,11 @@ void Navigation::ReachedGoal(){
     }
 }
 
-std::vector<Vector2f> Navigation::transformCloudForHighSpeeds(){
+std::pair<std::vector<Vector2f>, Vector2f> Navigation::transformCloudForHighSpeeds(const Vector2f &carrot){
 
     Vector2f curr_loc = robot_loc_;
     float curr_angle = robot_angle_;
+    Vector2f compensatedCarrot = carrot;
     std::vector<Vector2f> cloud;
     cloud.resize(cloud_.size());
     for (uint32_t j=0; j< cloud.size(); j++){
@@ -829,13 +834,17 @@ std::vector<Vector2f> Navigation::transformCloudForHighSpeeds(){
                  for (uint32_t j=0; j< cloud.size(); j++){
 			cloud[j]  = rotate*cloud[j];
                         cloud[j] -= compensatedLocInBaseFrame;
-                }
+		 }
+		 // carrot compensation
+		 //compensatedCarrot = rotate*compensatedCarrot;
+		 //compensatedCarrot -= compensatedLocInBaseFrame;
         }
         else{
                  Vector2f compensatedLocInBaseFrame(velocity*kLoopExecutionDelay, 0);
                  for (uint32_t j=0; j < cloud_.size(); j++){
 			 cloud[j] -= compensatedLocInBaseFrame;
                  }
+		 //compensatedCarrot -= compensatedLocInBaseFrame;
                  curr_loc = curr_loc + compensatedLocInBaseFrame;
         }
     }
@@ -844,7 +853,7 @@ std::vector<Vector2f> Navigation::transformCloudForHighSpeeds(){
 	visualization::DrawPoint(cloud[j], kPredictedCloudPointsColor, local_viz_msg_);
     }
 
-    return cloud;
+    return std::make_pair(cloud, compensatedCarrot);
 }
 
 

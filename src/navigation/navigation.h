@@ -111,7 +111,7 @@ class Navigation {
   /**
    * Actuation latency (time between when command is issued to when motors execute the command.
    */
-  const double kActuationLatency = 0.15;
+  const double kActuationLatency = 1.00;
 
   /**
    * Number of curvatures to evaluate. These will be evenly spaced between c_min and c_max
@@ -708,7 +708,7 @@ class Navigation {
    * Transforming the point cloud for latancy compensation
    */
 
-  std::vector<Eigen::Vector2f> transformCloudForHighSpeeds();
+  std::pair<std::vector<Eigen::Vector2f>, Eigen::Vector2f> transformCloudForHighSpeeds(const Eigen::Vector2f &carrot);
 };
 }  // namespace navigation
 
