@@ -101,7 +101,7 @@ class Navigation {
    * Maximum change to allow between the carrot and the preceding node. Interpolates a carrot at this angle if the
    * angle would otherwise be greater.
    */
-  const float kAngularCarrotMaxChange = M_PI / 3.0;
+  const float kAngularCarrotMaxChange = M_PI / 4.0;
 
   /**
    * Amount of time between each loop execution.
@@ -154,32 +154,18 @@ class Navigation {
    * Default weight that clearance should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_clearance_weight_.
    */
-  // TODO this should be validated, I'm not confident that the most recent change here improved performance
   const double kDefaultClearanceWeight = .05;
 
   /**
    * Default weight that curvature should have in the path scoring function used when there are no "reasonably open"
    * paths. See scoring_curvature_weight_.
    */
-  // TODO this should be validated, I'm not confident that the most recent change here improved performance
   const double kDefaultCurvatureWeight = -0.05;
 
   /**
-   * If there are no "reasonably open" paths, this threshold defines a small clearance. A flat penalty is applied to
-   * curvatures with clearances less than this. clearance is less than this. This is sort of used to create another
-   * tier of "reasonably open" that is more constrained than the "reasonably open" categorization that can be used when
-   * the car can travel at full speeds.
-   *
-   * TODO tune this. It might be possible to get rid of this and just keep the multiplicative penalty instead.
+   * Scoring free path weight.
    */
-  const double kSmallClearanceThreshold = 0.00;
-
-  /**
-   * Flat penalty applied to curvatures that have a small clearance.
-   *
-   * TODO tune this. It might be possible to get rid of this and just keep the multiplicative penalty instead.
-   */
-  const double kSmallClearancePenalty = -0.0;
+  const double kFreePathLenWeight = 1.15;
 
   /**
    * ROS parameter name for setting the clearance weight for the path scoring function.
@@ -382,18 +368,9 @@ class Navigation {
    * Weight for the clearance in the scoring function. Clearance is good so this should be a positive number.
    */
   double scoring_clearance_weight_;
+
   /**
-   * Scoring free path weight
-   */
-  double scoring_free_path_weight_ = 1.15;
-  /**
-   * Weight for the curvature in the scoring function. Because our goal is along the x-axis, and lower (absolute)
-   * curvatures will bring us close to our goal faster, we want to minimize the curvature (therefore, this should be
-   * negative).
-   *
-   * TODO: If we end up with goals not aligned with the x axis, we should consider positively weighting the dot product
-   * of the vector to the goal location and the vector to the point along the curve that will get us closest to the
-   * goal location.
+   * Weight for the difference between the curvature and the optimal curvature in the scoring function.
    */
   double scoring_curvature_weight_;
 
@@ -471,7 +448,6 @@ class Navigation {
    */
   void addCarDimensionsAndSafetyMarginAtPosToVisMessage(const std::pair<Eigen::Vector2f, double> &car_origin_loc,
       const uint32_t &car_color_loc, const uint32_t &safety_color, amrl_msgs::VisualizationMsg &viz_msg);
-
 
   /**
    * Add components to the visualization message for seeing the car size and car+safety margin size.
@@ -571,10 +547,6 @@ class Navigation {
   /**
    * Get the free path length and clearance (distance to the closest obstacle) for each of the given curvatures.
    *
-   * TODO: Bharath, feel free to replace this with an implementation that computes the free path lengths and clearances
-   * in batch if you can reuse computations. Delete the single-curvature function if you end up doing multiple at once.
-   * As long as this function's signature is consistent, that's fine.
-   *
    * @param curvatures_to_evaluate Curvatures (inverse of radius of turning) to evaluate and path length for the
    * curvature that will bring the car to its closest point of appraoch to the carrot.
    *
@@ -589,8 +561,6 @@ class Navigation {
    * Get the free path length and clearance (distance to the closest obstacle) for the given
    * curvature.
    *
-   * TODO: Bharath, implement this (or the batch version if you can reuse computations).
-   *
    * @param curvature Curvature (inv of radius of turning) to find the free path length and clearance for.
    *
    * @return Pair with the first entry as the free path length and second entry as the clearance.
@@ -600,12 +570,6 @@ class Navigation {
   /**
    * Command the drive to traverse the given distance along this curvature. Should only issue one command (we may
    * issue a different curvature at the next time step).
-   *
-   * TODO: Kunal, implement this. If there is some way that this would fail, feel free to add a boolean or int return
-   * code to indicate failure.
-   *
-   * TODO: Should this be open-loop (we just estimate how far we've gone) or semi-closed loop (use odom readings to
-   * estimate how far we've driven).
    *
    * @param distance    Distance to travel. This is mainly provided so that we know if we have to start decelerating
    *                    or not.

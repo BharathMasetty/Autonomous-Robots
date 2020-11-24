@@ -101,7 +101,8 @@ namespace nav_graph {
             if (abs(optimal_curvature) <= kMaxCurvature) {
 
                 // Only keep nodes in front of start
-                Vector2f node_rel_to_start = inverseTransformPoint(near_start_node.getNodePos(), 0, start.first, start.second).first;
+                Vector2f node_rel_to_start = inverseTransformPoint(near_start_node.getNodePos(), 0,
+                                                                   start.first, start.second).first;
                 if (node_rel_to_start.x() < 0) {
                     continue;
                 }
@@ -217,6 +218,7 @@ namespace nav_graph {
                     return abs(angle_change * rad_of_turn);
                 } else {
 
+                    // This is the start node so the curvature won't be perfect
                     // Just approximate with straight line distance
                     return (current_pos - next_pos).norm();
                 }
@@ -224,7 +226,6 @@ namespace nav_graph {
         }
     }
 
-    //we also need to define the start and goal nodes (assuming both are global variables) ///Please create nav_goal_loc_ and nav_start_loc_ as a NavGraphNode
     std::vector<NavGraphNode> GetPathToGoal(const NavGraphNode& nav_goal_loc, const NavGraphNode& nav_start_loc,
                                             const NavGraph &nav_graph) {
         std::unordered_map<NavGraphNode, NavGraphNode> came_from;
@@ -351,7 +352,7 @@ std::pair<Vector2f, Vector2f> NavGraph::getMapCorners(const vector_map::VectorMa
         }
     }
 
-    std::cout << "Map extremens obtained" << std::endl;
+    std::cout << "Map extrema obtained" << std::endl;
     std::cout << x_min << "  " << x_max << "  " << y_min << " " << y_max << std::endl;
     return std::make_pair(Vector2f(x_min, y_min), Vector2f(x_max, y_max));
 }
@@ -456,7 +457,8 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map, const vec
        for (int rot_num = 0; rot_num < kNumAngularOptions; rot_num++) {
            NavGraphNode new_node(node_pos, rot_num * kAngularOptionsFromNavGraph, true, 0);
            node_index_map_[new_node] = node_index;
-           rtree_.insert(std::make_pair(box_type(point_type(node_pos.x(), node_pos.y()), point_type(node_pos.x() + kBoxAroundNodeDim, node_pos.y() + kBoxAroundNodeDim)), node_index));
+           rtree_.insert(std::make_pair(box_type(point_type(node_pos.x(), node_pos.y()),
+                                                 point_type(node_pos.x() + kBoxAroundNodeDim, node_pos.y() + kBoxAroundNodeDim)), node_index));
            node_index++;
            nodes_.emplace_back(new_node);
        }
@@ -484,7 +486,8 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map, const vec
 	if (tempNodeOrientation2 >= 2*M_PI){
                 tempNodeOrientation2 -= 2*M_PI;
         }
-       NavGraphNode tempNode1(Vector2f(nodeX + (cosOffset / ((float) kStaggerCount)), nodeY + (sinOffset / ((float) kStaggerCount))), nodeAngle, true, 0);
+       NavGraphNode tempNode1(Vector2f(nodeX + (cosOffset / ((float) kStaggerCount)),
+                                       nodeY + (sinOffset / ((float) kStaggerCount))), nodeAngle, true, 0);
        NavGraphNode tempNode2(Vector2f(nodeX + cosOffset - sinOffset, nodeY + sinOffset + cosOffset),
                               tempNodeOrientation1, true, 0);
        NavGraphNode tempNode3(Vector2f(nodeX + cosOffset + sinOffset, nodeY + sinOffset - cosOffset),
@@ -504,7 +507,7 @@ void NavGraph::createNavigationGraph(const vector_map::VectorMap& map, const vec
        neighbors_[nodes_[i]] = neighbors;
    }
    ROS_INFO_STREAM("Num edges " << edges_count);
-   std::cout << "final purning done!" << std::endl;
+   std::cout << "final pruning done!" << std::endl;
    std::cout << kAngularOptionsFromNavGraph << std::endl;
 }
 
@@ -514,7 +517,8 @@ NavGraphNode NavGraph::createUnalignedNode(const Eigen::Vector2f& loc, const flo
     nodes_.emplace_back(new_node);
     node_index_map_[new_node] = node_index;
     // TODO figure out why storing points in the rtree wasn't working. It would be nice not to approximate points with tiny boxes.
-    rtree_.insert(std::make_pair(box_type(point_type(loc.x(), loc.y()), point_type(loc.x() + kBoxAroundNodeDim, loc.y() + kBoxAroundNodeDim)), node_index));
+    rtree_.insert(std::make_pair(box_type(point_type(loc.x(), loc.y()),
+                                          point_type(loc.x() + kBoxAroundNodeDim, loc.y() + kBoxAroundNodeDim)), node_index));
     next_non_aligned_id_++;
     return new_node;
 }

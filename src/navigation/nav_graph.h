@@ -2,7 +2,6 @@
 // Created by amanda on 11/12/20.
 //
 
-
 #ifndef CS393R_STARTER_NAV_GRAPH_H
 #define CS393R_STARTER_NAV_GRAPH_H
 
@@ -23,7 +22,6 @@ typedef std::pair<box_type, uint32_t> value;
 
 namespace nav_graph {
 
-
 /**
  * Maximum curvature (assumed to be the same on both sides of the car, so c_min = -1 *c_max).
  *
@@ -34,7 +32,7 @@ const double kMaxCurvature = 1.0;
 /**
  * Resolution of the navigation graph (provides how far apart the nearest two nodes are).
  */
-static const double kGridResolution = 1.0; // TODO tune
+static const double kGridResolution = 1.0;
 
 /**
  * Number of increments in the grid resolution.
@@ -345,7 +343,7 @@ private:
     /*
     * safety window for nodes, equal to max dimension of the car
     */
-    static constexpr float kCarSafetyDistance = 0.3;  //TODO: Verify this
+    static constexpr float kCarSafetyDistance = 0.3;
 
     /**
      * Maximum difference for an angle to be considered close.
@@ -367,11 +365,6 @@ private:
      * Color to use when displaying the graph nodes and edges.
      */
     static const uint32_t kGraphColor = 0x34b4eb;
-
-    /*
-     * Constant used t0 magnifiy the wall dimensions to avoid node at gaps between walls.
-     */
-    static constexpr float kWallMultiplier = 0.9;
 
     /**
      * Data structure that stores indices of nodes based on their location (not angle).
