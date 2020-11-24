@@ -139,6 +139,7 @@ void Navigation::createNavGraph(){
   permanent_navigation_graph_.createNavigationGraph(map_, inflated_map_);
   is_nav_graph_ready_ = true;
   ROS_INFO("Navigation graph created!");
+  // Uncomment to visualize nav graph (it's very heavy for the visualization)
 //  permanent_navigation_graph_.visualizeNavigationGraphPoints(global_viz_msg_);
   ROS_INFO("Graph Points visualized!");
 //  permanent_navigation_graph_.visualizeNavigationGraphEdges(global_viz_msg_);
@@ -279,6 +280,8 @@ std::unordered_map<double, double> Navigation::getPathLengthForClosestPointOfApp
 }
 
 double Navigation::getOptimalCurvatureForCarrot(const Eigen::Vector2f &carrot_location) {
+    // This solves for the inverse of the radius in the equation of a circle that has its center at (0, rad) and goes
+    // through the carrot location
     double curvature = (2 * carrot_location.y()) / carrot_location.squaredNorm();
 
     // Make sure curvature is within bounds
@@ -379,11 +382,7 @@ double Navigation::chooseCurvatureForNextTimestepNoOpenOptions(
 }
 
 double Navigation::scoreCurvature(const double &curvature, const double &free_path_len, const double &clearance, const double &optimal_curvature) {
-    double very_small_clearance_penalty = 0.0;
-    if (clearance < kSmallClearanceThreshold) {
-        very_small_clearance_penalty = kSmallClearancePenalty;
-    }
-    return very_small_clearance_penalty + scoring_free_path_weight_*free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
+    return kFreePathLenWeight * free_path_len + (scoring_clearance_weight_ * clearance) + (scoring_curvature_weight_ * abs(curvature - optimal_curvature));
 }
 
 std::unordered_map<double, std::pair<double, double>> Navigation::getFreePathLengthsAndClearances(
@@ -765,8 +764,8 @@ void Navigation::Run() {
       ROS_INFO_STREAM("Planning path ");
       global_plan_to_execute_ = nav_graph::GetPathToGoal(goal_node_, start_goal_nodes.first, temp_node_nav_graph_);
       ROS_INFO_STREAM("Done planning path");
-      // Plan
   }
+  // Uncomment to visualize start and goal node connections
 //  ROS_INFO_STREAM("Has plan of length " << global_plan_to_execute_.size());
 //  temp_node_nav_graph_.visualizeConnectionsFromNode(start_node_, global_viz_msg_);
 //  temp_node_nav_graph_.visualizeGoalEdges(goal_node_.getNodePos(), global_viz_msg_);
